@@ -150,6 +150,14 @@ Responsible for:
 - Establishing MQTT session  
 - Publishing telemetry packets  
 
+Recovery behavior:
+
+- Uses `failedTransmissionCount` to track consecutive GPRS/MQTT connection failures
+- Uses `MAX_FAILED_TRANSMISSIONS = 3` as recovery threshold
+- Sets `forceModemReset = true` when threshold is reached
+- Performs full modem hard reset on the next GPRS window (`initA7670()` reset branch)
+- Keeps telemetry data in EEPROM/SD while offline (no data discard)
+
 Works with both **non‑TLS port 1883** or **TLS 8883** depending on settings.
 
 ---
@@ -238,7 +246,19 @@ EEPROM pages → CSV lines in YYYYMMDD_P.CSV
 CSV lines → JSON payloads → MQTT publish → mark sent → rename file
 ```
 
-### 4.4 BLE Configuration
+### 4.4 Failure Recovery Cycle (GPRS/MQTT)
+
+```
+initA7670() fails → failedTransmissionCount++
+→ if count >= 3: forceModemReset = true and counter reset to 0
+→ device sleeps
+→ next scheduled GPRS window: initA7670() enters hard-reset path
+→ if reconnect succeeds: upload resumes from buffered EEPROM/SD data
+```
+
+This strategy preserves data and avoids aggressive modem power toggling on transient network outages.
+
+### 4.5 BLE Configuration
 
 ```
 BLE window open → user sends command → config update → save config → close BLE

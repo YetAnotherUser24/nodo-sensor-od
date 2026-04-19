@@ -194,6 +194,7 @@ char               dateStr[20];
 RTC_DATA_ATTR int      bootCount       = 0;
 RTC_DATA_ATTR uint16_t eepromWritePage = 0;   /**< Next data page after header. */
 RTC_DATA_ATTR uint8_t  failedTransmissionCount = 0;  /**< Consecutive GPRS/MQTT failures. */
+RTC_DATA_ATTR bool     forceModemReset = false;  /**< Force full modem reset on next cycle. */
 
 const uint8_t MAX_FAILED_TRANSMISSIONS = 3;  /**< Force modem reset after this many failures. */
 
@@ -478,7 +479,7 @@ void setup() {
           Serial.println("⚠️ Too many consecutive transmission failures!");
           Serial.println("🔄 Forcing full modem reset on next cycle...");
 #endif
-          firstRun = true;
+          forceModemReset = true;
           failedTransmissionCount = 0;
         }
       }

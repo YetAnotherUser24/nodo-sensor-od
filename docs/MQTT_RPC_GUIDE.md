@@ -102,7 +102,7 @@ Check network registration
 Open MQTT session
 Publish packets
 Close session
-POWER OFF modem
+Enter modem sleep mode
 ```
 
 Retries are performed if:
@@ -111,7 +111,16 @@ Retries are performed if:
 - Broker does not respond  
 - Packet publish fails  
 
-Each failure is logged in SD/EEPROM via status flags.
+Consecutive connection failures are counted in `failedTransmissionCount`.
+
+When failures reach `MAX_FAILED_TRANSMISSIONS = 3`:
+
+1. `forceModemReset` is set to `true`
+2. Counter is reset to `0`
+3. Device sleeps and waits for next GPRS schedule
+4. On next GPRS window, `initA7670()` performs full modem hard reset (reset + PWRKEY pulse)
+
+This gives a controlled recovery path without dropping buffered telemetry.
 
 ---
 

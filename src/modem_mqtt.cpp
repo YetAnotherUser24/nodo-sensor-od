@@ -66,6 +66,7 @@ extern RtcDateTime        rtcNow;
 extern char               dateStr[20];
 
 extern bool firstRun;
+extern bool forceModemReset;
 
 void formatDateTime(const RtcDateTime& dt);
 
@@ -161,7 +162,13 @@ bool initA7670() {
   digitalWrite(BOARD_POWERON_PIN, HIGH);
 #endif
 
-  if (firstRun) {
+  if (firstRun || forceModemReset) {
+
+#ifdef DEBUG
+    if (forceModemReset) {
+      Serial.println("🔄 Performing forced modem reset...");
+    }
+#endif
 
 #ifdef MODEM_RESET_PIN
     gpio_hold_dis((gpio_num_t)MODEM_RESET_PIN);
@@ -178,6 +185,8 @@ bool initA7670() {
     digitalWrite(BOARD_PWRKEY_PIN, LOW);   delay(100);
     digitalWrite(BOARD_PWRKEY_PIN, HIGH);  delay(1000);
     digitalWrite(BOARD_PWRKEY_PIN, LOW);
+    
+    forceModemReset = false;  // Clear flag after reset
 
   } else {
     Serial.println("Wakeup modem !");

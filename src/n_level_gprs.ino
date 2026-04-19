@@ -34,6 +34,8 @@
 #include <BLEUtils.h>
 #include <BLE2902.h>
 
+#include "config.h"
+
 /* --------------------------- BLE Status ---------------------------- */
 
 bool bleDeviceConnected = false;
@@ -50,10 +52,6 @@ const unsigned long BLE_WAIT_BLINK = 1000;   // 1s blink cuando espera conexión
 #define SD_MODULE   true
 #define BT_MODULE   true
 #define GPRS_MODULE true
-
-/** Sampling and storage configuration. */
-#define NUM_READINGS             5     /**< Number of sensor readings per measurement. */
-#define EEPROM_FLUSH_AFTER       288   /**< Number of records before flushing EEPROM to SD. */
 
 #define EEPROM_SENT_FLAG_OFFSET (EEPROM_PAGE_SIZE - 1)
 #define FLAG_NOT_SENT 0x00
@@ -75,9 +73,6 @@ uint64_t device_ID = ESP.getEfuseMac();
 HardwareSerial SensorSerial(2);
 const uint8_t SENSOR_RX_PIN = 23;
 const uint8_t SENSOR_TX_PIN = 19;
-
-/** Water level sensor type: 0 = 5 m, 1 = 10 m. */
-#define WATER_LEVEL_SENSOR_TYPE 1
 
 #define SerialMon  Serial
 #define SerialAT   Serial1
@@ -110,30 +105,8 @@ static const int SD_CS   = 13;
 #define GSM_PIN ""              /**< SIM unlock PIN if any. */
 
 const uint32_t UNIX_OFFSET_2000     = 946684800UL;
-const int32_t  LOCAL_TZ_OFFSET_SEC = 5 * 3600;
-
-/* APN configuration */
-#define APN = "claro.pe";
-#define APN_USER ""
-#define APN_PASS ""
-
-/* MQTT (ThingsBoard) configuration */
-const char* MQTT_HOST   = "viewer.natek.lat";
-#define MQTT_PORT 1883
-const char* MQTT_TOKEN  = "os9u2cyuOGdOW3WfxPsg";
-const char* MQTT_TOPIC  = "v1/devices/me/telemetry";
-
-/* ThingsBoard RPC topics */
-const char* TB_RPC_SUB_TOPIC = "v1/devices/me/rpc/request/+";
 
 /* ------------------------- Bluetooth Config ------------------------ */
-
-#define BLE_DEVICE_NAME     "LILYGO_A7670_BLE"
-#define SERVICE_UUID        "4fafc201-1fb5-459e-8fcc-c5c9c331914b"
-#define CHARACTERISTIC_UUID "beb5483e-36e1-4688-b7f5-ea07361b26a8"
-
-/** BLE active window in milliseconds. */
-#define BLE_ACTIVE_TIME 30000
 
 bool bleActive = false;
 unsigned long bleStartTime = 0;

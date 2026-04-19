@@ -59,3 +59,6 @@ Thumbs.db
 
 # Logs
 *.log
+
+# Local deployment config
+src/config.h

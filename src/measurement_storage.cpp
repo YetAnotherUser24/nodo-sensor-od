@@ -22,6 +22,8 @@
 #include "error_sensor.h"
 #include "rtc_utils.h"
 
+#include "config.h"
+
 #include <SdFat.h>
 #include <ArduinoJson.h>
 #include <EEPROM.h>
@@ -38,25 +40,12 @@
 
 extern HardwareSerial SensorSerial;
 
-#ifndef MQTT_TOPIC
-  #define MQTT_TOPIC "v1/devices/me/telemetry"
-#endif
-
 #ifndef UNIX_OFFSET_2000
   #define UNIX_OFFSET_2000 946684800UL
 #endif
 
 #ifndef LOCAL_TZ_OFFSET_SEC
   #define LOCAL_TZ_OFFSET_SEC (5 * 3600)
-#endif
-
-#ifndef NUM_READINGS
-#define NUM_READINGS             5     // Number of sensor readings per measurement
-#endif
-
-// Compile-time defaults
-#ifndef NUM_READINGS
-  #define NUM_READINGS 5
 #endif
 
 #ifndef EEPROM_PAGE_SIZE

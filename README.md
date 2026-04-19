@@ -106,8 +106,8 @@ See `docs/INSTALLATION.md` for a step-by-step guide.
    - Set **Partition Scheme** to **Huge APP (3MB)** (or equivalent).
    - Set Upload Speed to 921600 (or 115200). 
 4. Configure:
-   - APN / SIM credentials in `modem_mqtt.*`.
-   - ThingsBoard token / broker URL.
+  - Copy `src/config_template.h` to `src/config.h`.
+  - Edit APN / SIM credentials, ThingsBoard token / broker URL, BLE name, and sampling values in `src/config.h`.
 5. Flash `src/n_level_gprs.ino`.
 6. Open serial monitor and watch first boot logs.
 7. Use BLE (see `docs/BLE_COMMANDS.md`) to:

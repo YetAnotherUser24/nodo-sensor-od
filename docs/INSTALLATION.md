@@ -67,20 +67,22 @@ project/
 ```
 
 
-# 6. ThingsBoard / MQTT Configuration
 
-Edit in:
+# 6. Deployment Configuration
 
-src/modem_mqtt.cpp  
-src/modem_mqtt.h
+Copy:
 
-Set:
-- APN
-- MQTT Host
-- Device Token
+src/config_template.h -> src/config.h
 
-Telemetry topic:
-v1/devices/me/telemetry
+Edit `src/config.h` for:
+
+- APN / SIM credentials
+- MQTT host / port / device token
+- MQTT telemetry topic / RPC topic
+- BLE device name / service UUID / characteristic UUID
+- Sampling values like `NUM_READINGS`
+
+The local `src/config.h` file is ignored by git.
 
 ---
 

@@ -17,6 +17,8 @@
 #include <EEPROM.h>
 #include <RtcDS3231.h>
 
+#include "config.h"
+
 
 struct ModuleConfig {
   int measure_time;
@@ -28,24 +30,7 @@ struct ModuleConfig {
 #define SerialAT  Serial1
 #define TINY_GSM_USE_GPRS   true
 #define TINY_GSM_USE_WIFI   false
-#define GSM_PIN ""
 #define LED_PIN 32
-
-#ifndef APN
-  #define APN      "claro.pe"
-#endif
-
-#ifndef APN_USER
-  #define APN_USER ""
-#endif
-
-#ifndef APN_PASS
-  #define APN_PASS ""
-#endif
-
-#ifndef MQTT_PORT
-  #define MQTT_PORT 1883
-#endif
 
 /* ------------------------- External Definitions ------------------------- */
 
@@ -53,13 +38,7 @@ extern ModuleConfig moduleCfg;
 extern TinyGsm       modem;
 extern PubSubClient  mqtt;
 
-extern const char* MQTT_HOST;
-extern const char* MQTT_TOKEN;
-extern const char* MQTT_TOPIC;
-extern const char* TB_RPC_SUB_TOPIC;
-
 extern const uint32_t UNIX_OFFSET_2000;
-extern const int32_t  LOCAL_TZ_OFFSET_SEC;
 
 extern RtcDS3231<TwoWire> rtc;
 extern RtcDateTime        rtcNow;

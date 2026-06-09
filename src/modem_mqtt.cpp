@@ -3,10 +3,13 @@
  * @brief Implementation of A7670 modem control, GPRS attach, MQTT handling,
  *        and ThingsBoard RPC processing.
  *
- * Only formatting and documentation were improved; logic remains intact.
+ * Guarded by #ifdef GPRS_MODULE — disabled when GPRS feature is toggled off.
  */
 
+#ifdef GPRS_MODULE
+
 #include "modem_mqtt.h"
+#include "n_logger_config.h"
 #include "utilities.h"
 
 #include <Arduino.h>
@@ -19,26 +22,14 @@
 
 #include "config.h"
 
-
-struct ModuleConfig {
-  int measure_time;
-  int bluetooth_time;
-  int GPRS_time;
-};
-
 #define SerialMon Serial
 #define SerialAT  Serial1
-#define TINY_GSM_USE_GPRS   true
-#define TINY_GSM_USE_WIFI   false
-#define LED_PIN 32
 
 /* ------------------------- External Definitions ------------------------- */
 
 extern ModuleConfig moduleCfg;
 extern TinyGsm       modem;
 extern PubSubClient  mqtt;
-
-extern const uint32_t UNIX_OFFSET_2000;
 
 extern RtcDS3231<TwoWire> rtc;
 extern RtcDateTime        rtcNow;
@@ -62,7 +53,7 @@ static uint8_t rpcCount = 0;
 /* ---------------------------- JSON Helpers ------------------------------- */
 
 /**
- * @brief Extracts the “method” field from a ThingsBoard RPC payload.
+ * @brief Extracts the "method" field from a ThingsBoard RPC payload.
  */
 static String getRpcMethod(const String& payload) {
   StaticJsonDocument<128> doc;
@@ -164,7 +155,7 @@ bool initA7670() {
     digitalWrite(BOARD_PWRKEY_PIN, LOW);   delay(100);
     digitalWrite(BOARD_PWRKEY_PIN, HIGH);  delay(1000);
     digitalWrite(BOARD_PWRKEY_PIN, LOW);
-    
+
     forceModemReset = false;  // Clear flag after reset
 
   } else {
@@ -215,11 +206,11 @@ bool initA7670() {
 
   mqtt.setServer(MQTT_HOST, MQTT_PORT);
   bool mqttOk = connectMQTT();
-  
+
   if (!mqttOk) {
     SerialMon.println("MQTT connection failed, continuing in offline mode.");
   }
-  
+
   return mqttOk;
 }
 
@@ -285,7 +276,7 @@ bool connectMQTT(uint8_t maxAttempts, uint16_t delayMs) {
   for (uint8_t attempt = 1; attempt <= maxAttempts; attempt++) {
     SerialMon.printf(" (attempt %u/%u)", attempt, maxAttempts);
 
-    if (mqtt.connect("lilygoClient", MQTT_TOKEN, "")) {
+    if (mqtt.connect(MQTT_CLIENT_ID, MQTT_TOKEN, "")) {
       SerialMon.println(" ✓ connected.");
       mqtt.setCallback(onMqttMessage);
       mqtt.subscribe(TB_RPC_SUB_TOPIC);
@@ -405,7 +396,7 @@ bool publishJsonLineToTB(const String& jsonOut) {
       return false;
     }
   }
-  
+
 #ifdef DEBUG
   Serial.println("📤 MQTT → Publishing to ThingsBoard:");
   Serial.print("   Topic: ");
@@ -413,15 +404,15 @@ bool publishJsonLineToTB(const String& jsonOut) {
   Serial.print("   Payload: ");
   Serial.println(jsonOut);
 #endif
-  
+
   bool ok = mqtt.publish(MQTT_TOPIC, jsonOut.c_str());
-  
+
   // Minimal delay for network transmission (power optimized)
   for (int i = 0; i < 3; i++) {
     mqtt.loop();
     delay(50);
   }
-  
+
 #ifdef DEBUG
   if (ok) {
     Serial.println("   ✅ Published successfully (queued)");
@@ -433,6 +424,8 @@ bool publishJsonLineToTB(const String& jsonOut) {
     Serial.println(mqtt.state());
   }
 #endif
-  
+
   return ok;
 }
+
+#endif // GPRS_MODULE

@@ -7,10 +7,15 @@
  *  - MQTT connection handling
  *  - ThingsBoard RPC processing
  *  - JSON publishing helpers
+ *
+ * All declarations are guarded with #ifdef GPRS_MODULE.
+ * When GPRS_MODULE is not defined, stub implementations are used.
  */
 
 #pragma once
 #include <Arduino.h>
+
+#ifdef GPRS_MODULE
 
 /**
  * @brief Initializes the A7670 modem, powers it, configures network,
@@ -60,3 +65,15 @@ void processQueuedRpcCommands();
  * @return true if published successfully.
  */
 bool publishJsonLineToTB(const String& jsonOut);
+
+#else // !GPRS_MODULE
+
+/* Stub implementations for when GPRS module is disabled */
+
+static inline bool initA7670() { return false; }
+static inline void sleepA7670() {}
+static inline bool connectMQTT(uint8_t maxAttempts = 3, uint16_t delayMs = 2000) { return false; }
+static inline void processQueuedRpcCommands() {}
+static inline bool publishJsonLineToTB(const String& jsonOut) { return false; }
+
+#endif // GPRS_MODULE

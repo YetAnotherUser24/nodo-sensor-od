@@ -3,8 +3,10 @@
  * @brief Implementation of low-power helpers for SD bus, radio shutdown,
  *        and deep-sleep transition.
  *
- * Only formatting and documentation were improved. No functional changes
- * were introduced.
+ * Feature guards:
+ *  - #ifdef SD_MODULE: SD bus suspend/resume
+ *  - #ifdef GPRS_MODULE: modem sleep call
+ *  - WiFi/BT radio shutdown always included (needed for deep sleep)
  */
 
 #include "power_sleep.h"
@@ -14,59 +16,23 @@
 #include <esp_bt.h>
 #include <esp_sleep.h>
 #include <SPI.h>
-#include <SdFat.h>
 
+#include "n_logger_config.h"
 #include "utilities.h"
 #include "rtc_utils.h"
 
-/* ---------------------------- SD Bus Pin Defaults ---------------------------- */
-/* These defaults match the user’s main sketch; redefining here does not alter behavior. */
-
-#ifndef SD_MOSI
-  #define SD_MOSI 15
-#endif
-#ifndef SD_MISO
-  #define SD_MISO 2
-#endif
-#ifndef SD_SCLK
-  #define SD_SCLK 14
-#endif
-#ifndef SD_CS
-  #define SD_CS   13
+#ifdef SD_MODULE
+#include <SdFat.h>
 #endif
 
-/* ----------------------------- Wakeup Pin Config ------------------------------ */
+/* ------------------------ External Objects from main.cpp ------------------- */
 
-#ifndef WAKEUP_PIN
-  #define WAKEUP_PIN GPIO_NUM_39
-#endif
-#ifndef WAKEUP_PIN_BITMASK
-  #define WAKEUP_PIN_BITMASK (1ULL << WAKEUP_PIN)
-#endif
-
-/* ------------------------------- Sensor & LED -------------------------------- */
-
-#ifndef SENSOR_PWR_PIN
-  #define SENSOR_PWR_PIN 18
-#endif
-
-#ifndef LED_PIN
-  #define LED_PIN 32
-#endif
-
-/* ------------------------ External Objects from Main Sketch ------------------- */
-
+#ifdef SD_MODULE
 extern SdFat     SD;
 extern SdFile    sdFile;
 extern SPIClass  sdSPI;
+#endif
 
-extern HardwareSerial SensorSerial;
-
-struct ModuleConfig {
-  int measure_time;
-  int bluetooth_time;
-  int GPRS_time;
-};
 extern ModuleConfig moduleCfg;
 
 /* ------------------------------ SD Power Helpers ------------------------------ */
@@ -75,6 +41,7 @@ extern ModuleConfig moduleCfg;
  * @brief Suspends the SD SPI bus to prevent leakage during deep sleep.
  */
 void sdBusSuspend() {
+#ifdef SD_MODULE
   sdSPI.end();
 
   pinMode(SD_CS, OUTPUT);
@@ -83,13 +50,20 @@ void sdBusSuspend() {
   pinMode(SD_SCLK, INPUT);
   pinMode(SD_MOSI, INPUT);
   pinMode(SD_MISO, INPUT);
+#else
+  // No SD module — no-op
+#endif
 }
 
 /**
  * @brief Resumes the SD bus after waking from deep sleep.
  */
 void sdBusResume() {
+#ifdef SD_MODULE
   sdSPI.begin(SD_SCLK, SD_MISO, SD_MOSI, SD_CS);
+#else
+  // No SD module — no-op
+#endif
 }
 
 /* --------------------------- Radio Power Management --------------------------- */
@@ -123,9 +97,6 @@ void prepareForDeepSleep(int minutes) {
   int interval = (minutes <= 0) ? 1 : minutes;
 
   sdBusSuspend();
-
-  digitalWrite(SENSOR_PWR_PIN, LOW);
-  SensorSerial.end();
 
   digitalWrite(LED_PIN, LOW);
 

@@ -1,9 +1,18 @@
 /**
- * @file n_level_gprs.ino
- * @brief Main application for LilyGO A7670SA: measurement, storage, BLE and GPRS/MQTT.
+ * @file main.cpp
+ * @brief Main application entry point for n-logger multi-sensor platform.
+ *
+ * Replaces the monolithic n_level_gprs.ino. Composes modular components
+ * with compile-time feature toggles (SD_MODULE, GPRS_MODULE).
+ * BLE and EEPROM are always included.
+ *
+ * Build identity: N_LOGGER_DEVICE_NAME (default "n-logger")
+ * Sensor type: selected via descriptive build flags (e.g. -DSENSOR_MAXBOTIX_UART)
  */
 
+#include "n_logger_config.h"
 #include "utilities.h"
+#include "sensor_engine.h"
 #include "ble_manager.h"
 #include "modem_mqtt.h"
 #include "measurement_storage.h"
@@ -13,28 +22,39 @@
 #include "power_sleep.h"
 
 /* -------------------------- Dependencies --------------------------- */
-#include <TinyGsmClient.h>
-#include <HardwareSerial.h>
+
+#include <Arduino.h>
 #include <Wire.h>
 #include <RtcDS3231.h>
 #include <SPI.h>
-#include <SdFat.h>
 #include <EEPROM.h>
 #include <ArduinoJson.h>
-#include <ESP_SSLClient.h>
-#include <PubSubClient.h>
 #include <Ticker.h>
-#include <esp32-hal-adc.h>
 #include <WiFi.h>
 #include <esp_bt.h>
 #include <driver/gpio.h>
 #include <string.h>
+
+#include "config.h"
+
+/* ------------------------- BLE Includes ---------------------------- */
+
 #include <BLEDevice.h>
 #include <BLEServer.h>
 #include <BLEUtils.h>
 #include <BLE2902.h>
 
-#include "config.h"
+/* ------------------------- Conditional Includes -------------------- */
+
+#ifdef SD_MODULE
+#include <SdFat.h>
+#endif
+
+#ifdef GPRS_MODULE
+#include <TinyGsmClient.h>
+#include <ESP_SSLClient.h>
+#include <PubSubClient.h>
+#endif
 
 /* --------------------------- BLE Status ---------------------------- */
 
@@ -46,79 +66,30 @@ bool bleLedState = false;
 const unsigned long BLE_CONNECTED_BLINK = 1000;
 const unsigned long BLE_WAIT_BLINK = 1000;   // 1s blink cuando espera conexión
 
-/* ----------------------- Build-Time Configuration ------------------ */
-
-/** Feature switches for build-time enabling of modules. */
-#define SD_MODULE   true
-#define BT_MODULE   true
-#define GPRS_MODULE true
-
-#define EEPROM_SENT_FLAG_OFFSET (EEPROM_PAGE_SIZE - 1)
-#define FLAG_NOT_SENT 0x00
-#define FLAG_SENT     0x01
-
 uint64_t device_ID = ESP.getEfuseMac();
-#define CODE_VERSION 0X01
-
-/** Enable serial debug logs. */
-#ifndef DEBUG
-#define DEBUG
-#endif
-#ifndef BOARD_BAT_ADC_PIN
-#error "No support this board"
-#endif
 
 /* ------------------------------ Pins ------------------------------- */
-
-HardwareSerial SensorSerial(2);
-const uint8_t SENSOR_RX_PIN = 23;
-const uint8_t SENSOR_TX_PIN = 19;
 
 #define SerialMon  Serial
 #define SerialAT   Serial1
 
-#define LED_PIN        32
-#define SENSOR_PWR_PIN 18
-#define VBAT_PIN       35
-
-#define WAKEUP_PIN           GPIO_NUM_39
-#define WAKEUP_PIN_BITMASK   (1ULL << WAKEUP_PIN)
-
-#define EEPROM_ADDRESS     0x50
-#define EEPROM_PAGE_SIZE   32
-#define EEPROM_HEADER_SIZE 8
-#define EEPROM_MAX_PAGES   2048
-
 /* --------------------------- On-board SD --------------------------- */
 
+#ifdef SD_MODULE
 static const int SD_MOSI = 15;
 static const int SD_MISO = 2;
 static const int SD_SCLK = 14;
 static const int SD_CS   = 13;
+#endif
 
 /* --------------------------- Modem/Network ------------------------- */
 
+#ifdef GPRS_MODULE
 #define TINY_GSM_DEBUG      SerialMon
 #define TINY_GSM_USE_GPRS   true
 #define TINY_GSM_USE_WIFI   false
 
 #define GSM_PIN ""              /**< SIM unlock PIN if any. */
-
-const uint32_t UNIX_OFFSET_2000     = 946684800UL;
-
-/* ------------------------- Bluetooth Config ------------------------ */
-
-bool bleActive = false;
-unsigned long bleStartTime = 0;
-bool commandMode = false;
-unsigned long commandStart = 0;
-
-BLEServer*        pServer        = nullptr;
-BLECharacteristic* pCharacteristic = nullptr;
-
-/* ----------------------------- Helpers ----------------------------- */
-
-#define countof(a) (sizeof(a) / sizeof(a[0]))
 
 #define TINY_GSM_RX_BUFFER           1024
 #define MODEM_POWERON_PULSE_WIDTH_MS 100
@@ -137,8 +108,6 @@ BLECharacteristic* pCharacteristic = nullptr;
   #define TINY_GSM_USE_WIFI false
 #endif
 
-/* --------------------------- TinyGSM Setup ------------------------- */
-
 #ifdef DUMP_AT_COMMANDS
   #include <StreamDebugger.h>
   StreamDebugger debugger(SerialAT, SerialMon);
@@ -149,12 +118,15 @@ BLECharacteristic* pCharacteristic = nullptr;
 
 TinyGsmClient gsmClient(modem);
 PubSubClient  mqtt(gsmClient);
+#endif /* GPRS_MODULE */
 
-/* ---------------------------- SD / EEPROM -------------------------- */
+/* ---------------------------- SD ---------------------------------- */
 
+#ifdef SD_MODULE
 SdFat   SD;
 SdFile  sdFile;
 SPIClass sdSPI(HSPI);
+#endif
 
 /* ------------------------------ RTC -------------------------------- */
 
@@ -169,20 +141,15 @@ RTC_DATA_ATTR uint16_t eepromWritePage = 0;   /**< Next data page after header. 
 RTC_DATA_ATTR uint8_t  failedTransmissionCount = 0;  /**< Consecutive GPRS/MQTT failures. */
 RTC_DATA_ATTR bool     forceModemReset = false;  /**< Force full modem reset on next cycle. */
 
-const uint8_t MAX_FAILED_TRANSMISSIONS = 3;  /**< Force modem reset after this many failures. */
-
 bool measureDone      = false;
 bool bluetoothDone    = false;
 bool gprsDone         = false;
 bool mqttAvailable    = false;
 bool deviceConnected  = false;
-bool sendData         = false;
 bool readyForSleep    = false;
 bool firstRun         = false;
 
 uint32_t startMillis  = 0;
-int16_t  levelReadings[NUM_READINGS];
-uint8_t  nread        = 0;
 
 volatile uint16_t interruptCount = 0;
 volatile bool     interruptFlag  = false;
@@ -194,78 +161,30 @@ char      csvFilename[24];
 bool      fileOpen = false;
 
 String    payload = "";
-uint32_t  battery_voltage = 0;
-
-/* -------------------------- Status Bits ---------------------------- */
-
-#define STATUS_INTERNET_BIT           0
-#define STATUS_FULL_MEMORY_BIT        1
-#define STATUS_CORRUPTED_MEMORY_BIT   2
-#define STATUS_CODE_ERROR_BIT         3
-#define STATUS_WATER_LEVEL_SENSOR_BIT 16
-#define STATUS_SD_CARD_BIT            17
-#define STATUS_TEMPERATURE_BIT        18
-#define STATUS_GRPS_BIT               19
 
 /* ------------------------- Config Structure ------------------------ */
 
-/**
- * @brief Runtime configuration for module scheduling.
- */
-struct ModuleConfig {
-  int measure_time;
-  int bluetooth_time;
-  int GPRS_time;
-};
 ModuleConfig moduleCfg;
 
 /* ------------------------- Telemetry Packet ------------------------ */
 
-/**
- * @brief Main telemetry payload structure sent to the server.
- */
-struct TelemetryPayload {
-  int16_t  freeStorage;
-  int16_t  temperature;
-  int16_t  humidity;
-  int16_t  waterLevelSensor[NUM_READINGS];
-  uint32_t battery;
-  uint32_t status;
-} telemetryPayload;
+TelemetryPayload telemetryPayload;
 
-/* --------------------------- Prototypes ---------------------------- */
+/* ------------------------- BLE Globals ----------------------------- */
 
-String   extractJSON(String response);
-int      WaterLevelRead();
-uint32_t changeBit(uint32_t value, uint8_t bitIndex, bool setBit);
+bool bleActive = false;
+unsigned long bleStartTime = 0;
+bool commandMode = false;
+unsigned long commandStart = 0;
 
-/* -------------------------- File Name Utils ------------------------ */
+BLEServer*        pServer        = nullptr;
+BLECharacteristic* pCharacteristic = nullptr;
 
-/**
- * @brief Converts a pending SD filename (e.g. "/YYYYMMDD_P.CSV") into
- *        its final name ("/YYYYMMDD.CSV").
- *
- * @param pendingName Input pending filename.
- * @param out         Output buffer for final name.
- * @param outSize     Size of the output buffer.
- */
-void toFinalName(const char* pendingName, char* out, size_t outSize) {
-  strncpy(out, pendingName, outSize);
-  out[outSize - 1] = '\0';
+/* ---------------------------------------------------------------- */
+/*                           HELPERS                                */
+/* ---------------------------------------------------------------- */
 
-  size_t len = strlen(out);
-  if (len < 8) {
-    return;
-  }
-
-  char* underscore = strrchr(out, '_');
-  if (!underscore) {
-    return;
-  }
-  if (strncmp(underscore, "_P.CSV", 6) == 0) {
-    memmove(underscore, underscore + 2, strlen(underscore + 2) + 1);
-  }
-}
+#define countof(a) (sizeof(a) / sizeof(a[0]))
 
 /* ------------------------ BLE LED Pattern -------------------------- */
 
@@ -278,13 +197,13 @@ void toFinalName(const char* pendingName, char* out, size_t outSize) {
 void handleBleLedPattern() {
   unsigned long now = millis();
 
-  // --- BLE apagado → LED OFF ---
+  // BLE off → LED OFF
   if (!bleActive) {
     digitalWrite(LED_PIN, LOW);
     return;
   }
 
-  // --- BLE activo pero SIN conexión → PARPADEAR ---
+  // BLE active but not connected → BLINK
   if (!bleDeviceConnected) {
     if (now - lastBleLedMillis >= BLE_WAIT_BLINK) {
       bleLedState = !bleLedState;
@@ -294,10 +213,9 @@ void handleBleLedPattern() {
     return;
   }
 
-  // --- BLE conectado → LED ON FIJO ---
+  // BLE connected → LED ON solid
   digitalWrite(LED_PIN, HIGH);
 }
-
 
 /* ============================== Setup ============================== */
 
@@ -305,25 +223,12 @@ void handleBleLedPattern() {
  * @brief Initializes pins, RTC, SD, configuration and communication modules.
  */
 void setup() {
-  pinMode(SENSOR_PWR_PIN, OUTPUT);
   pinMode(LED_PIN, OUTPUT);
   digitalWrite(LED_PIN, LOW);
-  digitalWrite(SENSOR_PWR_PIN, LOW);
 
   Wire.begin();
 
-  // Example of default configuration persistence (kept commented)
-  /*
-  moduleCfg.measure_time   = 1;
-  moduleCfg.bluetooth_time = 2;
-  moduleCfg.GPRS_time      = 3;
-
-  EEPROM.begin(sizeof(ModuleConfig));
-  EEPROM.put(0, moduleCfg);
-  EEPROM.commit();
-  EEPROM.end();
-  */
-
+  // Load config from EEPROM
   EEPROM.begin(sizeof(ModuleConfig));
   EEPROM.get(0, moduleCfg);
   EEPROM.end();
@@ -337,7 +242,9 @@ void setup() {
   rtcNow = rtc.GetDateTime();
 
   // SD bus init
+#ifdef SD_MODULE
   sdSPI.begin(SD_SCLK, SD_MISO, SD_MOSI, SD_CS);
+#endif
 
   // Make sure radios are off at startup
   boardRadiosOff();
@@ -345,14 +252,20 @@ void setup() {
 #ifdef DEBUG
   Serial.begin(115200);
   Serial.println();
-  Serial.print(F("WELCOME TO N-LEVEL "));
+  Serial.printf("WELCOME TO %s ", N_LOGGER_DEVICE_NAME);
   Serial.printf("ChipID: %04X%08X\n",
                 (uint16_t)(device_ID >> 32),
                 (uint32_t)device_ID);
-  if ((SD_MODULE) && !(BT_MODULE) && !(GPRS_MODULE)) Serial.print("SD");
-  else if ((SD_MODULE) && (BT_MODULE) && !(GPRS_MODULE)) Serial.print("BT");
-  else if ((SD_MODULE) && (BT_MODULE) && (GPRS_MODULE)) Serial.print("GPRS");
-  Serial.println(" v0.1.1");
+#ifdef SD_MODULE
+  Serial.print("SD");
+#endif
+#ifdef GPRS_MODULE
+  Serial.print("GPRS");
+#endif
+  Serial.printf(" v%d.%d\n", CODE_VERSION >> 4, CODE_VERSION & 0x0F);
+
+  Serial.print(F("Sensor type: "));
+  Serial.println(SENSOR_NAME);
 
   Serial.print(F("Current time is "));
   formatDateTime(rtcNow);
@@ -362,15 +275,12 @@ void setup() {
   Serial.println("CURRENT CONFIGURATION:");
   Serial.print("(Measure time: ");
   Serial.print(moduleCfg.measure_time);
-  if ((BT_MODULE) && !(GPRS_MODULE)) {
-    Serial.print(" | BT time: ");
-    Serial.print(moduleCfg.bluetooth_time);
-  } else if ((BT_MODULE) && (GPRS_MODULE)) {
-    Serial.print(" | BT time: ");
-    Serial.print(moduleCfg.bluetooth_time);
-    Serial.print(" | GPRS time: ");
-    Serial.print(moduleCfg.GPRS_time);
-  }
+
+#ifdef GPRS_MODULE
+  Serial.print(" | GPRS time: ");
+  Serial.print(moduleCfg.GPRS_time);
+#endif
+
   Serial.println(")\n");
 #endif
 
@@ -404,8 +314,7 @@ void setup() {
     }
 
     // Bluetooth window
-    if (BT_MODULE &&
-        (moduleCfg.bluetooth_time > 0) &&
+    if (moduleCfg.bluetooth_time > 0 &&
         (rtcNow.Minute() % moduleCfg.bluetooth_time == 0)) {
 #ifdef DEBUG
       Serial.println("TRY TO CONNECT TO BLUETOOTH");
@@ -414,17 +323,17 @@ void setup() {
     }
 
     // GPRS window
-    if (GPRS_MODULE &&
-        moduleCfg.GPRS_time > 0 &&
+#ifdef GPRS_MODULE
+    if (moduleCfg.GPRS_time > 0 &&
         (rtcNow.Minute() % moduleCfg.GPRS_time == 0)) {
 #ifdef DEBUG
       Serial.println("TRY TO CONNECT TO GPRS AND SEND STORED DATA");
 #endif
       mqttAvailable = initA7670();
-      
+
       if (mqttAvailable) {
         failedTransmissionCount = 0;  // Reset on successful connection
-        
+
         sendSDPendingToThingsboard();
         sendEEPROMToThingsboard();
 
@@ -437,7 +346,7 @@ void setup() {
         processQueuedRpcCommands();
       } else {
         failedTransmissionCount++;
-        
+
 #ifdef DEBUG
         Serial.print("MQTT unavailable. Data remains in offline storage. (Failure ");
         Serial.print(failedTransmissionCount);
@@ -445,7 +354,7 @@ void setup() {
         Serial.print(MAX_FAILED_TRANSMISSIONS);
         Serial.println(")");
 #endif
-        
+
         // Force full modem reset after consecutive failures
         if (failedTransmissionCount >= MAX_FAILED_TRANSMISSIONS) {
 #ifdef DEBUG
@@ -459,6 +368,7 @@ void setup() {
 
       gprsDone = true;
     }
+#endif /* GPRS_MODULE */
 
   } else {
     // First boot after power-on/reset
@@ -493,11 +403,13 @@ void setup() {
 
     Serial.println("First run...");
     takeMeasurement();
+
+#ifdef GPRS_MODULE
     mqttAvailable = initA7670();
 
     if (mqttAvailable) {
       failedTransmissionCount = 0;  // Reset on successful connection
-      
+
       sendSDPendingToThingsboard();
       sendEEPROMToThingsboard();
 
@@ -510,7 +422,7 @@ void setup() {
       processQueuedRpcCommands();
     } else {
       failedTransmissionCount++;
-      
+
 #ifdef DEBUG
       Serial.print("MQTT unavailable on first run. Data saved to offline storage. (Failure ");
       Serial.print(failedTransmissionCount);
@@ -518,13 +430,15 @@ void setup() {
       Serial.print(MAX_FAILED_TRANSMISSIONS);
       Serial.println(")");
 #endif
-      
+
       // Note: firstRun already true, will retry with full reset next cycle
     }
-    
+
     gprsDone = true;
+#endif /* GPRS_MODULE */
   }
 
+#ifdef GPRS_MODULE
   if (gprsDone) {
     // Final flush before sleep (power optimized)
     for (int i = 0; i < 5; i++) {
@@ -533,6 +447,8 @@ void setup() {
     }
     sleepA7670();
   }
+#endif
+
   if (firstRun) {
     startBLE();
   }
@@ -553,14 +469,6 @@ void loop() {
       stopBLE();
       prepareForDeepSleep(moduleCfg.measure_time);
     }
-
-    if (sendData) {
-      if (SensorSerial.available()) {
-        int distance = SensorSerial.parseInt();
-        pCharacteristic->setValue(std::string(String(distance).c_str()));
-        pCharacteristic->notify();
-      }
-    }
   } else {
     digitalWrite(LED_PIN, LOW);
     prepareForDeepSleep(moduleCfg.measure_time);
@@ -580,78 +488,4 @@ void loop() {
 String extractJSON(String response) {
   int jsonStart = response.indexOf("\r\n\r\n");
   return (jsonStart != -1) ? response.substring(jsonStart + 4) : "";
-}
-
-/* ============================ Utilities ============================ */
-
-/**
- * @brief Sets or clears a specific bit in a 32-bit value.
- *
- * @param value    Current value.
- * @param bitIndex Bit index [0..31] to modify.
- * @param setBit   True to set bit, false to clear.
- * @return Updated value with the bit modified.
- */
-uint32_t changeBit(uint32_t value, uint8_t bitIndex, bool setBit) {
-  if (bitIndex > 31) {
-    return value;
-  }
-  if (setBit) {
-    value |= (1UL << bitIndex);
-  } else {
-    value &= ~(1UL << bitIndex);
-  }
-  return value;
-}
-
-/* ------------------------- Sensor (MaxBotix) ----------------------- */
-
-/**
- * @brief Reads distance from MaxBotix water level sensor over UART.
- *
- * @return Distance value parsed from sensor output, or -2 on timeout/error.
- */
-int WaterLevelRead() {
-  int result = -2;
-  char inData[6] = {0};
-  int index = 0;
-  unsigned long t0 = millis();
-  bool foundR = false;
-
-  // Wait for 'R' start character
-  while (!foundR && (millis() - t0) < 500) {
-    if (SensorSerial.available()) {
-      if (SensorSerial.read() == 'R') {
-        foundR = true;
-        break;
-      }
-    }
-  }
-
-  if (!foundR) return -2;
-
-  // Read up to 5 digits after 'R'
-  t0 = millis();
-  while (index < 5 && (millis() - t0) < 200) {
-    if (SensorSerial.available()) {
-      char c = SensorSerial.read();
-      if (c >= '0' && c <= '9') {
-        inData[index++] = c;
-      } else if (c == '\r' || c == '\n') {
-        break;  // End of reading
-      }
-    }
-  }
-
-  if (index > 0) {
-    inData[index] = '\0';
-    result = atoi(inData);
-    
-    // Validate range (MaxBotix typically 300-5000mm)
-    if (result < 0 || result > 9999) {
-      result = -2;
-    }
-  }
-
-  return result;
 }

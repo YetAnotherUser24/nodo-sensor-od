@@ -5,6 +5,16 @@
  * config.h is ignored by git so secrets stay out of the repository.
  */
 
+/* ----------------------------- Device Identity ------------------------- */
+
+#ifndef N_LOGGER_DEVICE_NAME
+#define N_LOGGER_DEVICE_NAME "n-logger"
+#endif
+
+#ifndef MQTT_CLIENT_ID
+#define MQTT_CLIENT_ID "nLoggerClient"
+#endif
+
 /* ----------------------------- SIM / APN ----------------------------- */
 
 #ifndef APN
@@ -63,11 +73,22 @@
 #define BLE_ACTIVE_TIME 30000
 #endif
 
-/* ------------------------------- Sampling ----------------------------- */
+/* ----------------------------- Sensor Type ---------------------------- */
 
-#ifndef WATER_LEVEL_SENSOR_TYPE
-#define WATER_LEVEL_SENSOR_TYPE 1
-#endif
+/*
+ * Enable sensors by defining one or more build flags in platformio.ini:
+ *
+ *   -DSENSOR_MAXBOTIX_UART     = MaxBotix MB12xx ultrasonic (UART)
+ *   -DSENSOR_WATER_TEMP        = Water surface temperature (I2C)
+ *   -DSENSOR_RADAR             = Radar distance sensor (placeholder)
+ *   -DSENSOR_BATTERY_ADC       = Battery voltage via ADC pin
+ *
+ * Multiple sensors can be enabled simultaneously.
+ * Per-sensor pins are defined in n_logger_config.h with sensible defaults.
+ * Override any pin by adding -D<NAME>=<VALUE> in build_flags.
+ */
+
+/* ------------------------------- Sampling ----------------------------- */
 
 #ifndef NUM_READINGS
 #define NUM_READINGS 5

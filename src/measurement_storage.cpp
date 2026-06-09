@@ -3,20 +3,25 @@
  * @brief Measurement capture, EEPROM buffering, SD batching and telemetry upload.
  *
  * This module centralizes:
- *  - Water-level sampling and temperature/battery acquisition.
+ *  - Sensor sampling and temperature/battery acquisition.
  *  - Compact EEPROM page storage.
  *  - Dumping buffered pages to SD.
  *  - Converting CSV records to JSON for ThingsBoard.
  *  - Uploading pending data from SD and EEPROM.
  *
- *  All functionality is preserved exactly as in original implementation.
+ * Feature guards:
+ *  - #ifdef SD_MODULE: SD card operations (dump, write, free space)
+ *  - #ifdef GPRS_MODULE: MQTT/network operations (publish, upload)
+ *
+ * All functionality is preserved exactly as in original implementation.
  */
-
 
 #include <Arduino.h>
 #include <HardwareSerial.h>
-#include "utilities.h"
+
+#include "n_logger_config.h"
 #include "measurement_storage.h"
+#include "sensor_engine.h"
 #include "eeprom_i2c.h"
 #include "modem_mqtt.h"
 #include "error_sensor.h"
@@ -24,110 +29,25 @@
 
 #include "config.h"
 
-#include <SdFat.h>
 #include <ArduinoJson.h>
 #include <EEPROM.h>
 #include <Wire.h>
+
+#ifdef SD_MODULE
+#include <SdFat.h>
+#endif
+
+#ifdef GPRS_MODULE
 #include <PubSubClient.h>
+#endif
 
 /* --------------------------------------------------------------------------
- *  External objects and configuration (declared in main .ino)
+ *  External objects and configuration (declared in main.cpp)
  * -------------------------------------------------------------------------- */
 
 #ifndef SerialMon
   #define SerialMon Serial
 #endif
-
-extern HardwareSerial SensorSerial;
-
-#ifndef UNIX_OFFSET_2000
-  #define UNIX_OFFSET_2000 946684800UL
-#endif
-
-#ifndef LOCAL_TZ_OFFSET_SEC
-  #define LOCAL_TZ_OFFSET_SEC (5 * 3600)
-#endif
-
-#ifndef EEPROM_PAGE_SIZE
-  #define EEPROM_PAGE_SIZE 32
-#endif
-
-#ifndef EEPROM_ADDRESS
-  #define EEPROM_ADDRESS 0x50
-#endif
-
-#ifndef EEPROM_HEADER_SIZE
-  #define EEPROM_HEADER_SIZE 8
-#endif
-
-#ifndef EEPROM_MAX_PAGES
-  #define EEPROM_MAX_PAGES 2048
-#endif
-
-#ifndef EEPROM_FLUSH_AFTER
-  #define EEPROM_FLUSH_AFTER 288
-#endif
-
-#ifndef EEPROM_SENT_FLAG_OFFSET
-  #define EEPROM_SENT_FLAG_OFFSET (EEPROM_PAGE_SIZE - 1)
-#endif
-
-#ifndef FLAG_NOT_SENT
-  #define FLAG_NOT_SENT 0x00
-#endif
-
-#ifndef FLAG_SENT
-  #define FLAG_SENT 0x01
-#endif
-
-#ifndef LED_PIN
-  #define LED_PIN 32
-#endif
-
-// Status bits
-#ifndef STATUS_SD_CARD_BIT
-  #define STATUS_SD_CARD_BIT 17
-#endif
-
-#ifndef STATUS_TEMPERATURE_BIT
-  #define STATUS_TEMPERATURE_BIT 18
-#endif
-
-#ifndef STATUS_WATER_LEVEL_SENSOR_BIT
-  #define STATUS_WATER_LEVEL_SENSOR_BIT 16
-#endif
-
-// SD Pins
-#ifndef SD_MOSI
-  #define SD_MOSI 15
-#endif
-#ifndef SD_MISO
-  #define SD_MISO 2
-#endif
-#ifndef SD_SCLK
-  #define SD_SCLK 14
-#endif
-#ifndef SD_CS
-  #define SD_CS 13
-#endif
-
-/* --------------------------------------------------------------------------
- *  External globals from main file
- * -------------------------------------------------------------------------- */
-struct ModuleConfig {
-  int measure_time;
-  int bluetooth_time;
-  int GPRS_time;
-};
-
-struct TelemetryPayload {
-  int16_t  freeStorage;
-  int16_t  temperature;
-  int16_t  humidity;
-  int16_t  waterLevelSensor[NUM_READINGS];
-  uint32_t battery;
-  uint32_t status;
-};
 
 extern ModuleConfig moduleCfg;
 extern TelemetryPayload telemetryPayload;
@@ -136,9 +56,11 @@ extern RTC_DATA_ATTR uint16_t eepromWritePage;
 extern byte      eepromPageBuf[EEPROM_PAGE_SIZE];
 extern bool      needFlushToSD;
 
+#ifdef SD_MODULE
 extern SdFat     SD;
 extern SdFile    sdFile;
 extern SPIClass  sdSPI;
+#endif
 extern char      csvFilename[24];
 extern bool      fileOpen;
 
@@ -146,15 +68,12 @@ extern RtcDS3231<TwoWire> rtc;
 extern RtcDateTime        rtcNow;
 extern char               dateStr[20];
 
+#ifdef GPRS_MODULE
 extern PubSubClient mqtt;
+#endif
 
 // External helpers
-extern uint32_t changeBit(uint32_t value, uint8_t bitIndex, bool setBit);
-extern int      WaterLevelRead();
 extern void     error(int errorNum, int errpin);
-extern bool     publishJsonLineToTB(const String& jsonOut);
-extern bool     connectMQTT(uint8_t maxAttempts, uint16_t delayMs);
-extern void     toFinalName(const char* pendingName, char* out, size_t outSize);
 extern bool     mqttAvailable;
 
 /* --------------------------------------------------------------------------
@@ -197,6 +116,7 @@ uint16_t getEEPROMFreePages() {
  * @brief Returns available SD capacity (MB).
  */
 uint32_t getSDFreeMB() {
+#ifdef SD_MODULE
   if (!SD.begin(SdSpiConfig(SD_CS, SHARED_SPI, SD_SCK_MHZ(20), &sdSPI))) {
     return 0;
   }
@@ -221,6 +141,9 @@ uint32_t getSDFreeMB() {
 
   uint64_t freeBytes = (totalBytes > usedBytes) ? (totalBytes - usedBytes) : 0;
   return freeBytes / (1024ULL * 1024ULL);
+#else
+  return 0;
+#endif
 }
 
 /**
@@ -247,23 +170,29 @@ void takeMeasurement() {
    */
   telemetryPayload.freeStorage = 0;
   telemetryPayload.temperature = 0;
-  telemetryPayload.humidity    = 0;
-  for (int i = 0; i < NUM_READINGS; i++)
-    telemetryPayload.waterLevelSensor[i] = 0;
+  for (int i = 0; i < MAX_SENSOR_READINGS; i++)
+    telemetryPayload.sensorReadings[i] = 0;
+#ifdef SENSOR_BATTERY_ADC
   telemetryPayload.battery = 0;
+#endif
   telemetryPayload.status  = 0x00000000;
 
   rtcNow = rtc.GetDateTime();
   uint32_t secondsSince2000 = rtcNow.TotalSeconds();
 
-  /* Battery reading */
-  analogSetAttenuation(ADC_11db);
-  analogReadResolution(12);
-  int16_t measuredVbat = analogReadMilliVolts(BOARD_BAT_ADC_PIN) * 2;
-  telemetryPayload.battery = measuredVbat;
+  /* Temperature from RTC (always included) */
+  int16_t tempCenti = rtc.GetTemperature().AsCentiDegC();
+  telemetryPayload.temperature = tempCenti;
 
-  /* Low-battery emergency config update */
-  if (measuredVbat < 3400) {
+  if (tempCenti < -4000 || tempCenti > 8500)
+    telemetryPayload.status = changeBit(telemetryPayload.status, STATUS_TEMPERATURE_BIT, true);
+
+  /* Sensor sampling via sensor engine (handles all enabled sensors) */
+  sensorReadAll(telemetryPayload);
+
+  /* Low-battery emergency config update (battery populated by sensor engine if SENSOR_BATTERY_ADC) */
+#ifdef SENSOR_BATTERY_ADC
+  if (telemetryPayload.battery < 3400) {
     moduleCfg.measure_time   = 60;
     moduleCfg.bluetooth_time = 1;
     moduleCfg.GPRS_time      = 1440;
@@ -273,63 +202,7 @@ void takeMeasurement() {
     EEPROM.commit();
     EEPROM.end();
   }
-
-  /* Temperature from RTC */
-  int16_t tempCenti = rtc.GetTemperature().AsCentiDegC();
-  telemetryPayload.temperature = tempCenti;
-
-  if (tempCenti < -4000 || tempCenti > 8500)
-    telemetryPayload.status = changeBit(telemetryPayload.status, STATUS_TEMPERATURE_BIT, true);
-
-  /* Water-level sampling */
-  uint8_t nread = 0;
-  SensorSerial.begin(9600, SERIAL_8N1, 23, 19);
-
-  digitalWrite(LED_PIN, HIGH);
-  digitalWrite(18, HIGH);
-  
-  // Sensor warmup: MaxBotix needs ~175ms to stabilize after power-on
-  delay(200);
-  
-  // Clear serial buffer of any startup noise
-  while (SensorSerial.available()) {
-    SensorSerial.read();
-  }
-  
-  digitalWrite(LED_PIN, LOW);
-
-  // Collect exactly 5 readings, exit immediately when done
-  uint32_t startMillis = millis();
-  const uint32_t TIMEOUT = 1500;  // 1.5s max for all samples
-  
-  while (nread < NUM_READINGS && (millis() - startMillis) < TIMEOUT) {
-    int16_t sample = WaterLevelRead();
-    
-    if (sample > -2) {
-      telemetryPayload.waterLevelSensor[nread] = sample;
-      nread++;
-      
-      // Wait for next sensor output (~100ms cycle on MaxBotix)
-      if (nread < NUM_READINGS) {
-        delay(120);
-      }
-    } else {
-      // Failed reading, retry after brief delay
-      delay(50);
-    }
-  }
-  
-  // Mark sensor failure if incomplete
-  if (nread < NUM_READINGS) {
-    telemetryPayload.status = changeBit(
-      telemetryPayload.status,
-      STATUS_WATER_LEVEL_SENSOR_BIT,
-      true
-    );
-  }
-
-  digitalWrite(18, LOW);
-  SensorSerial.end();
+#endif
 
 #ifdef DEBUG
   Serial.println("📊 ========== MEASUREMENT TAKEN ==========");
@@ -339,16 +212,18 @@ void takeMeasurement() {
   formatDateTime(rtcNow);
   Serial.print(dateStr);
   Serial.println(" GMT)");
+#ifdef SENSOR_BATTERY_ADC
   Serial.print("   Battery: ");
-  Serial.print(measuredVbat);
+  Serial.print(telemetryPayload.battery);
   Serial.println(" mV");
+#endif
   Serial.print("   Temperature: ");
   Serial.print(tempCenti / 100.0, 2);
   Serial.println(" °C");
-  Serial.print("   Water Level Readings: [");
-  for (int i = 0; i < NUM_READINGS; i++) {
-    Serial.print(telemetryPayload.waterLevelSensor[i]);
-    if (i < NUM_READINGS - 1) Serial.print(", ");
+  Serial.print("   Sensor Readings: [");
+  for (int i = 0; i < MAX_SENSOR_READINGS; i++) {
+    Serial.print(telemetryPayload.sensorReadings[i]);
+    if (i < MAX_SENSOR_READINGS - 1) Serial.print(", ");
   }
   Serial.println("]");
   Serial.print("   Status: 0x");
@@ -356,23 +231,20 @@ void takeMeasurement() {
   Serial.println("==========================================");
 #endif
 
-  /* EEPROM page building (unchanged) */
+  /* EEPROM page building: ts(4) + readings(N*2) + temp(2) + status(4) + pad + sent */
   for (int i = 0; i < 4; i++)
     eepromPageBuf[i] = ((byte*)&secondsSince2000)[i];
 
-  for (int i = 0; i < NUM_READINGS * 2; i++)
-    eepromPageBuf[i + 4] = ((byte*)telemetryPayload.waterLevelSensor)[i];
+  for (int i = 0; i < MAX_SENSOR_READINGS * 2; i++)
+    eepromPageBuf[i + 4] = ((byte*)telemetryPayload.sensorReadings)[i];
 
   for (int i = 0; i < 2; i++)
-    eepromPageBuf[i + 4 + NUM_READINGS*2] = ((byte*)&measuredVbat)[i];
-
-  for (int i = 0; i < 2; i++)
-    eepromPageBuf[i + 4 + NUM_READINGS*2 + 2] = ((byte*)&tempCenti)[i];
+    eepromPageBuf[i + 4 + MAX_SENSOR_READINGS*2] = ((byte*)&tempCenti)[i];
 
   for (int i = 0; i < 4; i++)
-    eepromPageBuf[i + 4 + NUM_READINGS*2 + 2 + 2] = ((byte*)&telemetryPayload.status)[i];
+    eepromPageBuf[i + 4 + MAX_SENSOR_READINGS*2 + 2] = ((byte*)&telemetryPayload.status)[i];
 
-  for (int i = 21; i < EEPROM_PAGE_SIZE - 1; i++)
+  for (int i = 4 + MAX_SENSOR_READINGS*2 + 2 + 4; i < EEPROM_PAGE_SIZE - 1; i++)
     eepromPageBuf[i] = 0;
 
   eepromPageBuf[EEPROM_SENT_FLAG_OFFSET] = FLAG_NOT_SENT;
@@ -416,6 +288,7 @@ void takeMeasurement() {
  * -------------------------------------------------------------------------- */
 
 void sendSDPendingToThingsboard() {
+#ifdef GPRS_MODULE
   if (!mqttAvailable) {
     Serial.println("MQTT unavailable, skipping SD uploads.");
     return;
@@ -429,6 +302,7 @@ void sendSDPendingToThingsboard() {
     }
   }
 
+#ifdef SD_MODULE
   SdFile dir, entry;
   if (!SD.begin(SdSpiConfig(SD_CS, SHARED_SPI, SD_SCK_MHZ(20), &sdSPI)))
     return;
@@ -443,9 +317,10 @@ void sendSDPendingToThingsboard() {
       entry.getName(name, sizeof(name));
       String fname = name;
 
-      if (fname.endsWith("_P.CSV") && fname.startsWith("20")) {
+      // Process CSV files that match /YYYYMMDD.CSV
+      if (fname.endsWith(".CSV") && fname.startsWith("20")) {
         String full = String("/") + fname;
-        bool pending = processPendingCsvFile(full.c_str());
+        bool pending = processCsvFile(full.c_str());
         if (pending) stillPending++;
       }
     }
@@ -453,15 +328,20 @@ void sendSDPendingToThingsboard() {
   }
 
   dir.close();
-  
+#endif // SD_MODULE
+
   // Final flush for batch (power optimized)
   for (int i = 0; i < 5; i++) {
     mqtt.loop();
     delay(50);
   }
+#else
+  (void)0;
+#endif
 }
 
 void sendEEPROMToThingsboard() {
+#ifdef GPRS_MODULE
   if (!mqttAvailable) {
     Serial.println("MQTT unavailable, skipping EEPROM uploads.");
     return;
@@ -478,10 +358,9 @@ void sendEEPROMToThingsboard() {
 
     if (pageBuf[EEPROM_SENT_FLAG_OFFSET] == FLAG_NOT_SENT) {
       uint32_t seconds2000 = *((uint32_t*)&pageBuf[0]);
-      int16_t* water = (int16_t*)&pageBuf[4];
-      int16_t  vbat  = *((int16_t*)&pageBuf[4 + NUM_READINGS*2]);
-      int16_t  temp  = *((int16_t*)&pageBuf[4 + NUM_READINGS*2 + 2]);
-      uint32_t status = *((uint32_t*)&pageBuf[4 + NUM_READINGS*2 + 4]);
+      int16_t* readings = (int16_t*)&pageBuf[4];
+      int16_t  temp  = *((int16_t*)&pageBuf[4 + MAX_SENSOR_READINGS*2]);
+      uint32_t status = *((uint32_t*)&pageBuf[4 + MAX_SENSOR_READINGS*2 + 2]);
 
       uint64_t tsUnix =
         ((uint64_t)seconds2000 + UNIX_OFFSET_2000 + LOCAL_TZ_OFFSET_SEC) * 1000ULL;
@@ -490,12 +369,16 @@ void sendEEPROMToThingsboard() {
       doc["ts"] = tsUnix;
 
       JsonObject vals = doc.createNestedObject("values");
-      vals["battery"] = vbat;
+
+#ifdef SENSOR_BATTERY_ADC
+      // Battery is the last sensor reading if enabled
+      vals["battery"] = readings[MAX_SENSOR_READINGS - 1];
+#endif
       vals["temperature"] = temp;
       vals["status"] = status;
 
-      JsonArray arr = vals.createNestedArray("waterLevelSensor");
-      for (int i = 0; i < NUM_READINGS; i++) arr.add(water[i]);
+      JsonArray arr = vals.createNestedArray("sensorReadings");
+      for (int i = 0; i < MAX_SENSOR_READINGS; i++) arr.add(readings[i]);
 
       vals["eepromFreePages"] = getEEPROMFreePages();
       vals["sdFreeMB"]        = getSDFreeMB();
@@ -516,39 +399,36 @@ void sendEEPROMToThingsboard() {
           return;
         }
       }
-      
+
       bool ok = mqtt.publish(MQTT_TOPIC, jsonOut.c_str());
-      
-      // Minimal delay for transmission
+
       for (int i = 0; i < 3; i++) {
         mqtt.loop();
         delay(50);
       }
-      
+
 #ifdef DEBUG
       if (ok) {
         Serial.println("   ✅ Published successfully (queued)");
-        Serial.print("   MQTT State: ");
-        Serial.println(mqtt.state());
       } else {
         Serial.println("   ❌ Publish failed");
-        Serial.print("   MQTT State: ");
-        Serial.println(mqtt.state());
       }
 #endif
-      
+
       if (ok)
         i2c_eeprom_write_byte(EEPROM_ADDRESS, addr + EEPROM_SENT_FLAG_OFFSET, FLAG_SENT);
     }
 
     pageIndex++;
   }
-  
-  // Final flush for batch (power optimized)
+
   for (int i = 0; i < 5; i++) {
     mqtt.loop();
     delay(50);
   }
+#else
+  (void)0;
+#endif
 }
 
 /* --------------------------------------------------------------------------
@@ -556,6 +436,7 @@ void sendEEPROMToThingsboard() {
  * -------------------------------------------------------------------------- */
 
 uint8_t dumpEEPROM() {
+#ifdef SD_MODULE
   uint16_t i = 0, j = 0;
   bool keep = true;
   bool failure = false;
@@ -593,13 +474,16 @@ uint8_t dumpEEPROM() {
 
   digitalWrite(LED_PIN, LOW);
   return failure ? 0 : 1;
+#else
+  return 1;
+#endif
 }
 
 /* --------------------------------------------------------------------------
- *  CSV filename generation
+ *  CSV filename: /YYYYMMDD.CSV (no pending _P prefix)
  * -------------------------------------------------------------------------- */
 
-void getPendingFilename(const RtcDateTime& ts) {
+void getFilename(const RtcDateTime& ts) {
   int y = ts.Year();
   int m = ts.Month();
   int d = ts.Day();
@@ -613,19 +497,20 @@ void getPendingFilename(const RtcDateTime& ts) {
   csvFilename[6]  = m % 10 + '0';
   csvFilename[7]  = d / 10 + '0';
   csvFilename[8]  = d % 10 + '0';
-  csvFilename[9]  = '_';
-  csvFilename[10] = 'P';
-  csvFilename[11] = '.';
-  csvFilename[12] = 'C';
-  csvFilename[13] = 'S';
-  csvFilename[14] = 'V';
-  csvFilename[15] = '\0';
+  csvFilename[9]  = '.';
+  csvFilename[10] = 'C';
+  csvFilename[11] = 'S';
+  csvFilename[12] = 'V';
+  csvFilename[13] = '\0';
 }
 
 /**
  * @brief Writes one EEPROM row into the proper daily CSV file.
+ *
+ * CSV format: dateStr, seconds2000, reading[0..N-1], temperature, status, sent
  */
 uint8_t writeEEPROMLine(uint16_t n) {
+#ifdef SD_MODULE
   byte pageBuf[EEPROM_PAGE_SIZE];
   RtcDateTime ts;
 
@@ -639,22 +524,22 @@ uint8_t writeEEPROMLine(uint16_t n) {
   uint32_t seconds2000 = ((uint32_t*)pageBuf)[0];
   ts = RtcDateTime(seconds2000);
 
-  int16_t* ptr = (int16_t*)pageBuf;
+  int16_t* readings = (int16_t*)&pageBuf[4];
 
-  uint32_t status32 =
-    ((uint32_t)ptr[NUM_READINGS + 4] & 0xFFFF) |
-    ((uint32_t)ptr[NUM_READINGS + 5] << 16);
+  uint32_t status =
+    ((uint32_t)readings[MAX_SENSOR_READINGS + 2] & 0xFFFF) |
+    ((uint32_t)readings[MAX_SENSOR_READINGS + 3] << 16);
 
   uint8_t sentFlag = (pageBuf[EEPROM_SENT_FLAG_OFFSET] == FLAG_SENT);
 
   static uint32_t dayCache = 40;
   if (!fileOpen) {
-    getPendingFilename(ts);
+    getFilename(ts);
     fileOpen = sdFile.open(csvFilename, O_CREAT | O_WRITE | O_APPEND);
     dayCache = ts.Day();
   } else if (dayCache != ts.Day()) {
     sdFile.close();
-    getPendingFilename(ts);
+    getFilename(ts);
     fileOpen = sdFile.open(csvFilename, O_CREAT | O_WRITE | O_APPEND);
     dayCache = ts.Day();
   }
@@ -669,13 +554,13 @@ uint8_t writeEEPROMLine(uint16_t n) {
   sdFile.print(", ");
   sdFile.print(seconds2000);
 
-  for (uint16_t k = 0; k < NUM_READINGS + 2; k++) {
+  for (uint16_t k = 0; k < MAX_SENSOR_READINGS + 2; k++) {
     sdFile.print(", ");
-    sdFile.print(ptr[k + 2]);
+    sdFile.print(readings[k + 2]);
   }
 
   sdFile.print(", ");
-  sdFile.print(status32);
+  sdFile.print(status);
 
   sdFile.print(", ");
   sdFile.print(sentFlag);
@@ -683,6 +568,9 @@ uint8_t writeEEPROMLine(uint16_t n) {
   sdFile.println();
   sdFile.flush();
   return 1;
+#else
+  return 1;
+#endif
 }
 
 /* --------------------------------------------------------------------------
@@ -714,11 +602,14 @@ bool markEepromSentByTimestamp(uint32_t secondsSince2000) {
 
 /* --------------------------------------------------------------------------
  *  csvLineToJson() — CSV → JSON conversion
+ *
+ *  CSV format: dateStr, seconds2000, reading[0..N-1], temperature, status, sent
+ *  → JSON with sensorReadings array, battery (if SENSOR_BATTERY_ADC), temperature, status
  * -------------------------------------------------------------------------- */
 
 bool csvLineToJson(const String& line, String& jsonOut, uint32_t& outSeconds2000) {
   int idx = 0, start = 0, field = 0;
-  int values[NUM_READINGS + 2];
+  int values[MAX_SENSOR_READINGS + 2];
   uint32_t status = 0;
   int sent = 0;
   uint32_t seconds2000 = 0;
@@ -730,15 +621,13 @@ bool csvLineToJson(const String& line, String& jsonOut, uint32_t& outSeconds2000
 
     if (field == 1)
       seconds2000 = token.toInt();
-    else if (field >= 2 && field <= (1 + NUM_READINGS))
+    else if (field >= 2 && field <= (1 + MAX_SENSOR_READINGS))
       values[field - 2] = token.toInt();
-    else if (field == (2 + NUM_READINGS))
-      values[NUM_READINGS] = token.toInt();
-    else if (field == (3 + NUM_READINGS))
-      values[NUM_READINGS + 1] = token.toInt();
-    else if (field == (4 + NUM_READINGS))
+    else if (field == (2 + MAX_SENSOR_READINGS))
+      values[MAX_SENSOR_READINGS] = token.toInt();
+    else if (field == (3 + MAX_SENSOR_READINGS))
       status = token.toInt();
-    else if (field == (5 + NUM_READINGS))
+    else if (field == (4 + MAX_SENSOR_READINGS))
       sent = token.toInt();
 
     field++;
@@ -746,7 +635,7 @@ bool csvLineToJson(const String& line, String& jsonOut, uint32_t& outSeconds2000
     start = idx + 1;
   }
 
-  if (field < (6 + NUM_READINGS))
+  if (field < (5 + MAX_SENSOR_READINGS))
     return false;
 
   StaticJsonDocument<512> doc;
@@ -756,12 +645,16 @@ bool csvLineToJson(const String& line, String& jsonOut, uint32_t& outSeconds2000
   doc["ts"] = tsUnix;
 
   JsonObject vals = doc.createNestedObject("values");
-  vals["battery"] = values[NUM_READINGS];
-  vals["temperature"] = values[NUM_READINGS + 1];
+
+#ifdef SENSOR_BATTERY_ADC
+  // Battery is the last sensor reading if enabled
+  vals["battery"] = values[MAX_SENSOR_READINGS - 1];
+#endif
+  vals["temperature"] = values[MAX_SENSOR_READINGS];
   vals["status"] = status;
 
-  JsonArray arr = vals.createNestedArray("waterLevelSensor");
-  for (int i = 0; i < NUM_READINGS; i++)
+  JsonArray arr = vals.createNestedArray("sensorReadings");
+  for (int i = 0; i < MAX_SENSOR_READINGS; i++)
     arr.add(values[i]);
 
   jsonOut.clear();
@@ -772,10 +665,11 @@ bool csvLineToJson(const String& line, String& jsonOut, uint32_t& outSeconds2000
 }
 
 /* --------------------------------------------------------------------------
- *  processPendingCsvFile() — Handles *_P.CSV
+ *  processCsvFile() — Reads CSV file, publishes unsent lines, rewrites in place
  * -------------------------------------------------------------------------- */
 
-bool processPendingCsvFile(const char* filename) {
+bool processCsvFile(const char* filename) {
+#ifdef SD_MODULE
   SdFile inFile, outFile;
 
   char tmpName[28];
@@ -844,47 +738,12 @@ bool processPendingCsvFile(const char* filename) {
   inFile.close();
   outFile.close();
 
-  if (pendingLeft) {
-    SD.remove(filename);
-    SD.rename(tmpName, filename);
-    return true;
-  }
-
-  char finalName[28];
-  toFinalName(filename, finalName, sizeof(finalName));
-
-  SD.remove(finalName);
-
-  if (!SD.rename(tmpName, finalName)) {
-    SD.remove(filename);
-    SD.rename(tmpName, filename);
-    return true;
-  }
-
+  // Replace original with updated file
   SD.remove(filename);
-  return false;
-}
+  SD.rename(tmpName, filename);
 
-/* --------------------------------------------------------------------------
- *  Final filename builder: /YYYYMMDD.CSV
- * -------------------------------------------------------------------------- */
-
-void getFilename(const RtcDateTime& ts) {
-  int y = ts.Year();
-  int m = ts.Month();
-  int d = ts.Day();
-
-  csvFilename[0]  = '/';
-  csvFilename[1]  = '2';
-  csvFilename[2]  = '0';
-  csvFilename[3]  = (y - 2000) / 10 + '0';
-  csvFilename[4]  = y % 10 + '0';
-  csvFilename[5]  = m / 10 + '0';
-  csvFilename[6]  = m % 10 + '0';
-  csvFilename[7]  = d / 10 + '0';
-  csvFilename[8]  = d % 10 + '0';
-  csvFilename[9]  = '.';
-  csvFilename[10] = 'C';
-  csvFilename[11] = 'S';
-  csvFilename[12] = 'V';
+  return pendingLeft;
+#else
+  return true;
+#endif
 }

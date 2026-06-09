@@ -4,6 +4,8 @@
  *
  * This module initializes BLE, manages advertising, handles connection events,
  * receives commands from BLE clients, and triggers configuration or sensor actions.
+ *
+ * BLE is always included (non-toggleable).
  */
 
 #include "ble_manager.h"
@@ -17,24 +19,11 @@
 #include <Wire.h>
 #include <RtcDS3231.h>
 
+#include "n_logger_config.h"
 #include "config.h"
 #include "utilities.h"
 
-#define LED_PIN        32
-#define SENSOR_PWR_PIN 18
-
-#define SENSOR_RX_PIN  23
-#define SENSOR_TX_PIN  19
-
-#define DEBUG
-
 /* ------------------------ External Dependencies ------------------------ */
-
-struct ModuleConfig {
-  int measure_time;
-  int bluetooth_time;
-  int GPRS_time;
-};
 
 extern ModuleConfig moduleCfg;
 
@@ -54,10 +43,7 @@ extern unsigned long  commandStart;
 extern BLEServer*        pServer;
 extern BLECharacteristic* pCharacteristic;
 
-extern bool           sendData;
-extern HardwareSerial SensorSerial;
-
-/* Declared in main .ino */
+/* Declared in main module */
 extern bool bleDeviceConnected;
 
 /* ---------------------------- BLE Callbacks ---------------------------- */
@@ -102,7 +88,7 @@ class ServerConnectionCallbacks : public BLEServerCallbacks {
 void startBLE() {
   Serial.println("🔵 Starting BLE...");
 
-  BLEDevice::init(BLE_DEVICE_NAME);
+  BLEDevice::init(N_LOGGER_BLE_NAME);
 
   pServer = BLEDevice::createServer();
   pServer->setCallbacks(new ServerConnectionCallbacks());
@@ -213,20 +199,6 @@ void processCommand(String cmd) {
   /* ------------------------- Reserved command C ------------------------- */
   else if (cmd == "C") {
     // Reserved for future use
-  }
-
-  /* ------------------------------ SEND --------------------------------- */
-  else if (cmd == "SEND") {
-    SensorSerial.begin(9600, SERIAL_8N1, SENSOR_RX_PIN, SENSOR_TX_PIN);
-    digitalWrite(SENSOR_PWR_PIN, HIGH);
-    delay(160);
-    sendData = true;
-  }
-
-  /* ------------------------------ STOP --------------------------------- */
-  else if (cmd == "STOP") {
-    digitalWrite(SENSOR_PWR_PIN, LOW);
-    sendData = false;
   }
 
   /* ------------------------------ DATA --------------------------------- */

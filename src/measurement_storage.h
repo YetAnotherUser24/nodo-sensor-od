@@ -3,7 +3,7 @@
  * @brief Measurement acquisition, EEPROM buffering, SD batching, and upload helpers.
  *
  * This module handles:
- *  - Sampling water-level sensor and temperature.
+ *  - Sampling sensor and temperature.
  *  - Preparing compact EEPROM records.
  *  - Dumping EEPROM pages to SD as CSV.
  *  - Processing pending CSV files and converting to JSON.
@@ -41,16 +41,15 @@ void normalizeConfig();
  * @brief Performs full measurement cycle and stores result in EEPROM buffer.
  *
  * Includes:
- *  - Battery reading
  *  - Temperature reading from RTC
- *  - Water-level sampling
+ *  - Sensor sampling via sensor engine
  *  - Status flags
  *  - EEPROM page packing
  */
 void takeMeasurement();
 
 /**
- * @brief Sends all pending *_P.CSV files from SD to ThingsBoard.
+ * @brief Sends all pending CSV files from SD to ThingsBoard.
  */
 void sendSDPendingToThingsboard();
 
@@ -67,9 +66,9 @@ void sendEEPROMToThingsboard();
 uint8_t dumpEEPROM();
 
 /**
- * @brief Builds a filename of form /YYYYMMDD_P.CSV.
+ * @brief Builds a filename of form /YYYYMMDD.CSV.
  */
-void getPendingFilename(const RtcDateTime& ts);
+void getFilename(const RtcDateTime& ts);
 
 /**
  * @brief Writes one EEPROM page (index n) into the appropriate CSV file.
@@ -94,13 +93,8 @@ bool markEepromSentByTimestamp(uint32_t secondsSince2000);
 bool csvLineToJson(const String& line, String& jsonOut, uint32_t& outSeconds2000);
 
 /**
- * @brief Processes pending CSV file: sends unsent lines and rewrites the file.
+ * @brief Processes CSV file: sends unsent lines and rewrites the file.
  *
  * @return true if file still has pending lines, false if fully cleared.
  */
-bool processPendingCsvFile(const char* filename);
-
-/**
- * @brief Builds a filename of form /YYYYMMDD.CSV (final file, no _P).
- */
-void getFilename(const RtcDateTime& ts);
+bool processCsvFile(const char* filename);

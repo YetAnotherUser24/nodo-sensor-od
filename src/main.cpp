@@ -75,12 +75,7 @@ uint64_t device_ID = ESP.getEfuseMac();
 
 /* --------------------------- On-board SD --------------------------- */
 
-#ifdef SD_MODULE
-static const int SD_MOSI = 15;
-static const int SD_MISO = 2;
-static const int SD_SCLK = 14;
-static const int SD_CS   = 13;
-#endif
+// SD pins now defined in n_logger_config.h as SD_PIN_MOSI, SD_PIN_MISO, etc.
 
 /* --------------------------- Modem/Network ------------------------- */
 
@@ -243,7 +238,7 @@ void setup() {
 
   // SD bus init
 #ifdef SD_MODULE
-  sdSPI.begin(SD_SCLK, SD_MISO, SD_MOSI, SD_CS);
+  sdSPI.begin(SD_PIN_SCLK, SD_PIN_MISO, SD_PIN_MOSI, SD_PIN_CS);
 #endif
 
   // Make sure radios are off at startup

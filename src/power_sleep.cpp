@@ -44,12 +44,12 @@ void sdBusSuspend() {
 #ifdef SD_MODULE
   sdSPI.end();
 
-  pinMode(SD_CS, OUTPUT);
-  digitalWrite(SD_CS, HIGH);   // De-select card
+  pinMode(SD_PIN_CS, OUTPUT);
+  digitalWrite(SD_PIN_CS, HIGH);   // De-select card
 
-  pinMode(SD_SCLK, INPUT);
-  pinMode(SD_MOSI, INPUT);
-  pinMode(SD_MISO, INPUT);
+  pinMode(SD_PIN_SCLK, INPUT);
+  pinMode(SD_PIN_MOSI, INPUT);
+  pinMode(SD_PIN_MISO, INPUT);
 #else
   // No SD module — no-op
 #endif
@@ -60,7 +60,7 @@ void sdBusSuspend() {
  */
 void sdBusResume() {
 #ifdef SD_MODULE
-  sdSPI.begin(SD_SCLK, SD_MISO, SD_MOSI, SD_CS);
+  sdSPI.begin(SD_PIN_SCLK, SD_PIN_MISO, SD_PIN_MOSI, SD_PIN_CS);
 #else
   // No SD module — no-op
 #endif

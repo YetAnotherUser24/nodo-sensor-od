@@ -218,20 +218,20 @@ struct TelemetryPayload {
  *  SD Card Pin Defaults
  * -------------------------------------------------------------------------- */
 
-#ifndef SD_MOSI
-#define SD_MOSI 15
+#ifndef SD_PIN_MOSI
+#define SD_PIN_MOSI 15
 #endif
 
-#ifndef SD_MISO
-#define SD_MISO 2
+#ifndef SD_PIN_MISO
+#define SD_PIN_MISO 2
 #endif
 
-#ifndef SD_SCLK
-#define SD_SCLK 14
+#ifndef SD_PIN_SCLK
+#define SD_PIN_SCLK 14
 #endif
 
-#ifndef SD_CS
-#define SD_CS 13
+#ifndef SD_PIN_CS
+#define SD_PIN_CS 13
 #endif
 
 /* --------------------------------------------------------------------------

@@ -117,7 +117,7 @@ uint16_t getEEPROMFreePages() {
  */
 uint32_t getSDFreeMB() {
 #ifdef SD_MODULE
-  if (!SD.begin(SdSpiConfig(SD_CS, SHARED_SPI, SD_SCK_MHZ(20), &sdSPI))) {
+  if (!SD.begin(SdSpiConfig(SD_PIN_CS, SHARED_SPI, SD_SCK_MHZ(20), &sdSPI))) {
     return 0;
   }
 
@@ -304,7 +304,7 @@ void sendSDPendingToThingsboard() {
 
 #ifdef SD_MODULE
   SdFile dir, entry;
-  if (!SD.begin(SdSpiConfig(SD_CS, SHARED_SPI, SD_SCK_MHZ(20), &sdSPI)))
+  if (!SD.begin(SdSpiConfig(SD_PIN_CS, SHARED_SPI, SD_SCK_MHZ(20), &sdSPI)))
     return;
 
   if (!dir.open("/")) return;
@@ -443,7 +443,7 @@ uint8_t dumpEEPROM() {
 
   digitalWrite(LED_PIN, HIGH);
 
-  if (!SD.begin(SdSpiConfig(SD_CS, SHARED_SPI, SD_SCK_MHZ(20), &sdSPI))) {
+  if (!SD.begin(SdSpiConfig(SD_PIN_CS, SHARED_SPI, SD_SCK_MHZ(20), &sdSPI))) {
     telemetryPayload.status =
       changeBit(telemetryPayload.status, STATUS_SD_CARD_BIT, true);
 

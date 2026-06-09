@@ -26,14 +26,19 @@
 #include <Arduino.h>
 #include <Wire.h>
 #include <RtcDS3231.h>
-#include <SPI.h>
 #include <EEPROM.h>
-#include <ArduinoJson.h>
-#include <Ticker.h>
-#include <WiFi.h>
+
+#ifdef SD_MODULE
+#include <SPI.h>
+#endif
+
 #include <esp_bt.h>
 #include <driver/gpio.h>
 #include <string.h>
+
+#ifdef GPRS_MODULE
+#include <WiFi.h>
+#endif
 
 #include "config.h"
 
@@ -63,7 +68,6 @@ unsigned long lastBleLedMillis = 0;
 bool bleLedState = false;
 
 /** Blink period in milliseconds when BLE is connected. */
-const unsigned long BLE_CONNECTED_BLINK = 1000;
 const unsigned long BLE_WAIT_BLINK = 1000;   // 1s blink cuando espera conexión
 
 uint64_t device_ID = ESP.getEfuseMac();
@@ -72,10 +76,6 @@ uint64_t device_ID = ESP.getEfuseMac();
 
 #define SerialMon  Serial
 #define SerialAT   Serial1
-
-/* --------------------------- On-board SD --------------------------- */
-
-// SD pins now defined in n_logger_config.h as SD_PIN_MOSI, SD_PIN_MISO, etc.
 
 /* --------------------------- Modem/Network ------------------------- */
 
@@ -353,8 +353,8 @@ void setup() {
         // Force full modem reset after consecutive failures
         if (failedTransmissionCount >= MAX_FAILED_TRANSMISSIONS) {
 #ifdef DEBUG
-          Serial.println("⚠️ Too many consecutive transmission failures!");
-          Serial.println("🔄 Forcing full modem reset on next cycle...");
+          Serial.println("⚠ Too many consecutive transmission failures!");
+          Serial.println(" Forcing full modem reset on next cycle...");
 #endif
           forceModemReset = true;
           failedTransmissionCount = 0;
@@ -460,7 +460,7 @@ void loop() {
 
   if (bleActive) {
     if (millis() - bleStartTime > BLE_ACTIVE_TIME) {
-      Serial.println("⏱️ BLE time expired, entering sleep...");
+      Serial.println(" BLE time expired, entering sleep...");
       stopBLE();
       prepareForDeepSleep(moduleCfg.measure_time);
     }
@@ -470,17 +470,4 @@ void loop() {
   }
 
   delay(50);
-}
-
-/* ============================ Commands ============================= */
-
-/**
- * @brief Extracts JSON payload from an HTTP-like response string.
- *
- * @param response Input response string including headers.
- * @return JSON substring starting after the header separator.
- */
-String extractJSON(String response) {
-  int jsonStart = response.indexOf("\r\n\r\n");
-  return (jsonStart != -1) ? response.substring(jsonStart + 4) : "";
 }

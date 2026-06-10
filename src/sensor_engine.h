@@ -10,8 +10,8 @@
  *   -DSENSOR_MAXBOTIX_UART     = MaxBotix MB12xx ultrasonic (UART)
  *   -DSENSOR_WATER_TEMP        = Water surface temperature (I2C)
  *   -DSENSOR_RADAR             = Radar distance sensor (Modbus RTU)
- *   -DSENSOR_SOIL_3TIP         = 3-tip soil moisture/temperature (Modbus RTU)
- *   -DSENSOR_SOIL_5TIP         = 5-tip soil comprehensive (Modbus RTU)
+ *   -DSENSOR_SOIL_3TIP         = 3-probe soil moisture/temperature (Modbus RTU)
+ *   -DSENSOR_SOIL_5TIP         = 5-probe soil comprehensive (Modbus RTU)
  *   -DSENSOR_BATTERY_ADC       = Battery voltage via ADC
  */
 

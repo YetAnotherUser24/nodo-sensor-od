@@ -78,8 +78,8 @@
  *    -DSENSOR_MAXBOTIX_UART     = MaxBotix MB12xx ultrasonic distance (UART)
  *    -DSENSOR_WATER_TEMP        = Water surface temperature (I2C)
  *    -DSENSOR_RADAR             = Radar distance sensor (Modbus RTU, direct UART)
- *    -DSENSOR_SOIL_3TIP         = 3-tip soil moisture/temperature (Modbus RTU, RS-485)
- *    -DSENSOR_SOIL_5TIP         = 5-tip soil comprehensive sensor (Modbus RTU, RS-485)
+ *    -DSENSOR_SOIL_3TIP         = 3-probe soil moisture/temperature (Modbus RTU, RS-485)
+ *    -DSENSOR_SOIL_5TIP         = 5-probe soil comprehensive sensor (Modbus RTU, RS-485)
  *    -DSENSOR_BATTERY_ADC       = Battery voltage via ADC pin
  *
  *  NOTE: SENSOR_RADAR, SENSOR_SOIL_3TIP, and SENSOR_SOIL_5TIP share UART pins
@@ -94,7 +94,7 @@
  *  (e.g. -DMAXBOTIX_RX_PIN=22 in platformio.ini build_flags).
  * -------------------------------------------------------------------------- */
 
-// Radar, 3-tip soil, and 5-tip soil sensors share UART pins (GPIO 34/32) and
+// Radar, 3-probe soil, and 5-probe soil sensors share UART pins (GPIO 34/32) and
 // power pin (GPIO 19). At most one of these may be enabled in a single build.
 #if defined(SENSOR_RADAR) && (defined(SENSOR_SOIL_3TIP) || defined(SENSOR_SOIL_5TIP))
 #error "SENSOR_RADAR, SENSOR_SOIL_3TIP, and SENSOR_SOIL_5TIP share hardware pins and are mutually exclusive."
@@ -141,7 +141,7 @@
   #define RADAR_NUM_READINGS 0
 #endif
 
-// --- 3-Tip Soil Moisture/Temperature sensor (Modbus RTU over RS-485) ---
+// --- 3-Probe Soil Moisture/Temperature sensor (Modbus RTU over RS-485) ---
 #ifdef SENSOR_SOIL_3TIP
   #define SOIL_RX_PIN 34
   #define SOIL_TX_PIN 32
@@ -153,12 +153,12 @@
   #define SOIL_MODBUS_READ_COUNT 2
   #define SOIL_MODBUS_START_ADDR 0x0000
   #define SOIL_WARMUP_MS 200
-  #define SENSOR_NAME "soil-3tip"
+  #define SENSOR_NAME "soil-3probe"
 #else
   #define SOIL_NUM_READINGS 0
 #endif
 
-// --- 5-Tip Soil Comprehensive sensor (Modbus RTU over RS-485) ---
+// --- 5-Probe Soil Comprehensive sensor (Modbus RTU over RS-485) ---
 // Measures moisture, temperature, conductivity (EC), pH, N, P, K.
 // Reads 7 holding registers starting at 0x0000.
 #ifdef SENSOR_SOIL_5TIP
@@ -173,7 +173,7 @@
   #define SOIL5_MODBUS_START_ADDR 0x0000
   #define SOIL5_WARMUP_MS 200
   #define SOIL5_NUM_READINGS (SOIL5_SAMPLE_COUNT * SOIL5_MODBUS_READ_COUNT)
-  #define SENSOR_NAME "soil-5tip"
+  #define SENSOR_NAME "soil-5probe"
 #else
   #define SOIL5_NUM_READINGS 0
 #endif

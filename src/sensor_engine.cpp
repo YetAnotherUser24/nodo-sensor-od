@@ -7,7 +7,7 @@
  * the same pattern — define pins/warmup, implement a read function,
  * then hook into sensorReadAll().
  *
- * NOTE: SENSOR_RADAR and SENSOR_SOIL_3TIP use the same UART (Serial2)
+ * NOTE: SENSOR_RADAR and SENSOR_SOIL_3TIP (3-probe soil sensor) use the same UART (Serial2)
  * and power pin (GPIO 19) and are mutually exclusive at build time.
  */
 
@@ -137,7 +137,7 @@ static int16_t radarReadSingle() {
 #endif /* SENSOR_RADAR */
 
 /* ==================================================================
- *  SENSOR: 3-Tip Soil Moisture/Temperature (Modbus RTU over RS-485)
+ *  SENSOR: 3-Probe Soil Moisture/Temperature (Modbus RTU over RS-485)
  *
  *  Reads 2 holding registers starting at 0x0000 from slave ID 1:
  *    register 0x0000 = moisture (%RH, ÷10)
@@ -198,7 +198,7 @@ static int16_t soilReadBoth(int16_t& moisture, int16_t& temperature) {
 #endif /* SENSOR_SOIL_3TIP */
 
 /* ==================================================================
- *  SENSOR: 5-Tip Soil Comprehensive (Modbus RTU over RS-485)
+ *  SENSOR: 5-Probe Soil Comprehensive (Modbus RTU over RS-485)
  *
  *  Reads 7 holding registers starting at 0x0000 from slave ID 1:
  *    register 0x0000 = moisture (%RH, ÷10)
@@ -217,7 +217,7 @@ static int16_t soilReadBoth(int16_t& moisture, int16_t& temperature) {
 static HardwareSerial soil5Serial(2);
 
 /**
- * @brief Reads all 7 measurements from the 5-tip soil sensor.
+ * @brief Reads all 7 measurements from the 5-probe soil sensor.
  *
  * Performs one Modbus read of 7 registers starting at 0x0000.
  * Fills the provided array with raw values in this order:
@@ -379,7 +379,7 @@ void sensorReadAll(TelemetryPayload& tp) {
   }
   #endif /* SENSOR_RADAR */
 
-  /* ---- 3-Tip Soil Sensor (Modbus RTU, RS-485) ---- */
+/* ---- 3-Probe Soil Sensor (Modbus RTU, RS-485) ---- */
   #ifdef SENSOR_SOIL_3TIP
   {
     // Power on
@@ -424,7 +424,7 @@ void sensorReadAll(TelemetryPayload& tp) {
   }
   #endif /* SENSOR_SOIL_3TIP */
 
-  /* ---- 5-Tip Soil Sensor (Modbus RTU, RS-485) ---- */
+/* ---- 5-Probe Soil Sensor (Modbus RTU, RS-485) ---- */
   #ifdef SENSOR_SOIL_5TIP
   {
     // Power on

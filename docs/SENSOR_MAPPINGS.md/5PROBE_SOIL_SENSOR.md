@@ -1,4 +1,4 @@
-# 5-Tip Soil Sensor - Measurements
+# 5-Probe Soil Sensor - Measurements
 
 ## Overview
 Outputs all 7 measurements: moisture, temperature, conductivity (EC), pH, nitrogen (N), phosphorus (P), and potassium (K).
@@ -97,10 +97,10 @@ To set device address to 2 and baud rate to 9600:
 - Config registers: 0x07D0 (address), 0x07D1 (baud code)
 - Target: address = 2, baud code = 2 (9600)
 
-# 5-Tip Soil Sensor - Configuration
+# 5-Probe Soil Sensor - Configuration
 
 ## Overview
-Configuration registers for the 5-Tip Soil Sensor. These are modifiable settings that control device address and serial baud rate.
+Configuration registers for the 5-Probe Soil Sensor. These are modifiable settings that control device address and serial baud rate.
 
 | Register | PLC Address | Parameter | Range | Factory Default | Current |
 |----------|-------------|-----------|-------|-----------------|---------|
@@ -142,7 +142,7 @@ Configuration registers for the 5-Tip Soil Sensor. These are modifiable settings
 
 ### Using modbus_rs485_scope_debug
 
-1. **Connect** the 5-Tip Soil Sensor to the RS485 bus (only one sensor)
+1. **Connect** the 5-Probe Soil Sensor to the RS485 bus (only one sensor)
 2. **Upload and Monitor** the `modbus_rs485_scope_debug` environment
 3. **Send command** `c` in Serial Monitor
 4. The device will:

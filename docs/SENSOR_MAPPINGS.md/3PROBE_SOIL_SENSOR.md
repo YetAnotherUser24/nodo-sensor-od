@@ -1,4 +1,4 @@
-# 3-Tip Soil Sensor - Measurements
+# 3-Probe Soil Sensor - Measurements
 
 ## Overview
 Outputs humidity (soil moisture) and temperature only.

@@ -198,6 +198,73 @@ static int16_t soilReadBoth(int16_t& moisture, int16_t& temperature) {
 #endif /* SENSOR_SOIL_3TIP */
 
 /* ==================================================================
+ *  SENSOR: 5-Tip Soil Comprehensive (Modbus RTU over RS-485)
+ *
+ *  Reads 7 holding registers starting at 0x0000 from slave ID 1:
+ *    register 0x0000 = moisture (%RH, ÷10)
+ *    register 0x0001 = temperature (°C, ÷10, signed)
+ *    register 0x0002 = conductivity (EC, µS/cm, direct)
+ *    register 0x0003 = pH (÷10)
+ *    register 0x0004 = nitrogen (N, mg/kg, direct)
+ *    register 0x0005 = phosphorus (P, mg/kg, direct)
+ *    register 0x0006 = potassium (K, mg/kg, direct)
+ *  RS-485 transceiver direction control on D0 (active high).
+ * ================================================================== */
+#ifdef SENSOR_SOIL_5TIP
+
+#include "modbus_rtu.h"
+
+static HardwareSerial soil5Serial(2);
+
+/**
+ * @brief Reads all 7 measurements from the 5-tip soil sensor.
+ *
+ * Performs one Modbus read of 7 registers starting at 0x0000.
+ * Fills the provided array with raw values in this order:
+ *   moisture, temperature, conductivity, pH, nitrogen, phosphorus, potassium
+ *
+ * @param[out] values Array of 7 int16_t to receive raw register values.
+ * @return 0 on success, -2 on comm failure, -5 on Modbus exception.
+ */
+static int16_t soil5ReadAll(int16_t* values) {
+  modbus_rtu::ModbusRtu modbus(soil5Serial);
+
+  modbus_rtu::ModbusRtu::Config cfg;
+  cfg.directionPin = SOIL5_DE_RE_PIN;
+  cfg.manualDirection = true;
+  cfg.txActiveHigh = true;
+  cfg.responseTimeoutMs = 500;
+  cfg.txEnableGuardUs = 250;
+  cfg.txDisableGuardUs = 250;
+  cfg.interFrameGapMs = 6;
+  cfg.rxTurnaroundUs = 0;
+  modbus.configure(cfg);
+
+  // Read 7 registers starting at 0x0000
+  auto result = modbus.readRegisters(SOIL5_SLAVE_ID, 0x03, SOIL5_MODBUS_START_ADDR, SOIL5_MODBUS_READ_COUNT);
+
+  if (!result.success) {
+    return -2;
+  }
+
+  if (result.isException) {
+    return -5;
+  }
+
+  if (result.count < SOIL5_MODBUS_READ_COUNT) {
+    return -3;
+  }
+
+  for (uint8_t i = 0; i < SOIL5_MODBUS_READ_COUNT; i++) {
+    values[i] = static_cast<int16_t>(result.values[i]);
+  }
+
+  return 0;
+}
+
+#endif /* SENSOR_SOIL_5TIP */
+
+/* ==================================================================
  *  SENSOR: Battery voltage via ADC
  * ================================================================== */
 #ifdef SENSOR_BATTERY_ADC
@@ -356,6 +423,51 @@ void sensorReadAll(TelemetryPayload& tp) {
     digitalWrite(SOIL_PWR_PIN, LOW);
   }
   #endif /* SENSOR_SOIL_3TIP */
+
+  /* ---- 5-Tip Soil Sensor (Modbus RTU, RS-485) ---- */
+  #ifdef SENSOR_SOIL_5TIP
+  {
+    // Power on
+    pinMode(SOIL5_PWR_PIN, OUTPUT);
+    digitalWrite(SOIL5_PWR_PIN, HIGH);
+    delay(SOIL5_WARMUP_MS);
+
+    // Init UART at 4800 baud
+    soil5Serial.begin(SOIL5_BAUD, SERIAL_8N1, SOIL5_RX_PIN, SOIL5_TX_PIN);
+
+    // Clear startup noise
+    while (soil5Serial.available()) soil5Serial.read();
+
+    // Read samples — each sample reads all 7 registers
+    uint8_t nread = 0;
+    unsigned long sampleStart = millis();
+    const unsigned long SAMPLE_TIMEOUT = 3000;
+
+    while (nread < SOIL5_SAMPLE_COUNT && (millis() - sampleStart) < SAMPLE_TIMEOUT) {
+      int16_t values[SOIL5_MODBUS_READ_COUNT] = {0};
+      int16_t status = soil5ReadAll(values);
+
+      if (status == 0) {
+        for (uint8_t i = 0; i < SOIL5_MODBUS_READ_COUNT; i++) {
+          tp.sensorReadings[readingIndex++] = values[i];
+        }
+        nread++;
+        if (nread < SOIL5_SAMPLE_COUNT) delay(200);
+      } else {
+        delay(100);
+      }
+    }
+
+    // Mark failure if no samples obtained
+    if (nread == 0) {
+      tp.status = changeBit(tp.status, STATUS_SOIL_SENSOR_BIT, true);
+    }
+
+    // Power off
+    soil5Serial.end();
+    digitalWrite(SOIL5_PWR_PIN, LOW);
+  }
+  #endif /* SENSOR_SOIL_5TIP */
 
   /* ---- Battery ADC ---- */
   #ifdef SENSOR_BATTERY_ADC

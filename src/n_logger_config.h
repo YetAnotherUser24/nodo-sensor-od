@@ -79,11 +79,12 @@
  *    -DSENSOR_WATER_TEMP        = Water surface temperature (I2C)
  *    -DSENSOR_RADAR             = Radar distance sensor (Modbus RTU, direct UART)
  *    -DSENSOR_SOIL_3TIP         = 3-tip soil moisture/temperature (Modbus RTU, RS-485)
+ *    -DSENSOR_SOIL_5TIP         = 5-tip soil comprehensive sensor (Modbus RTU, RS-485)
  *    -DSENSOR_BATTERY_ADC       = Battery voltage via ADC pin
  *
- *  NOTE: SENSOR_RADAR and SENSOR_SOIL_3TIP share UART pins (GPIO 34/32) and
- *  power pin (GPIO 19). They are mutually exclusive — do NOT enable both in
- *  the same build.
+ *  NOTE: SENSOR_RADAR, SENSOR_SOIL_3TIP, and SENSOR_SOIL_5TIP share UART pins
+ *  (GPIO 34/32) and power pin (GPIO 19). They are mutually exclusive — do NOT
+ *  enable more than one in the same build.
  *
  *  Each sensor defines its own pins, number of readings, and warmup time.
  *  Multiple compatible sensors can be active simultaneously.
@@ -93,10 +94,13 @@
  *  (e.g. -DMAXBOTIX_RX_PIN=22 in platformio.ini build_flags).
  * -------------------------------------------------------------------------- */
 
-// Radar and 3-tip soil sensor share UART pins (GPIO 34/32) and power pin (GPIO 19).
-// They must NOT be enabled simultaneously.
-#if defined(SENSOR_RADAR) && defined(SENSOR_SOIL_3TIP)
-#error "SENSOR_RADAR and SENSOR_SOIL_3TIP share hardware pins and are mutually exclusive."
+// Radar, 3-tip soil, and 5-tip soil sensors share UART pins (GPIO 34/32) and
+// power pin (GPIO 19). At most one of these may be enabled in a single build.
+#if defined(SENSOR_RADAR) && (defined(SENSOR_SOIL_3TIP) || defined(SENSOR_SOIL_5TIP))
+#error "SENSOR_RADAR, SENSOR_SOIL_3TIP, and SENSOR_SOIL_5TIP share hardware pins and are mutually exclusive."
+#endif
+#if defined(SENSOR_SOIL_3TIP) && defined(SENSOR_SOIL_5TIP)
+#error "SENSOR_SOIL_3TIP and SENSOR_SOIL_5TIP share hardware pins and are mutually exclusive."
 #endif
 
 // --- MaxBotix MB12xx ultrasonic sensor over UART ---
@@ -154,6 +158,26 @@
   #define SOIL_NUM_READINGS 0
 #endif
 
+// --- 5-Tip Soil Comprehensive sensor (Modbus RTU over RS-485) ---
+// Measures moisture, temperature, conductivity (EC), pH, N, P, K.
+// Reads 7 holding registers starting at 0x0000.
+#ifdef SENSOR_SOIL_5TIP
+  #define SOIL5_RX_PIN 34
+  #define SOIL5_TX_PIN 32
+  #define SOIL5_PWR_PIN 19
+  #define SOIL5_DE_RE_PIN 0
+  #define SOIL5_BAUD 4800
+  #define SOIL5_SLAVE_ID 1
+  #define SOIL5_SAMPLE_COUNT 2
+  #define SOIL5_MODBUS_READ_COUNT 7
+  #define SOIL5_MODBUS_START_ADDR 0x0000
+  #define SOIL5_WARMUP_MS 200
+  #define SOIL5_NUM_READINGS (SOIL5_SAMPLE_COUNT * SOIL5_MODBUS_READ_COUNT)
+  #define SENSOR_NAME "soil-5tip"
+#else
+  #define SOIL5_NUM_READINGS 0
+#endif
+
 // --- Battery voltage via ADC ---
 #ifdef SENSOR_BATTERY_ADC
   #define BATTERY_ADC_PIN 35
@@ -166,7 +190,7 @@
 
 // --- Compute total measurement slots ---
 #ifndef MAX_SENSOR_READINGS
-#define MAX_SENSOR_READINGS (MAXBOTIX_NUM_READINGS + WATER_TEMP_NUM_READINGS + RADAR_NUM_READINGS + BATTERY_NUM_READINGS + SOIL_NUM_READINGS)
+#define MAX_SENSOR_READINGS (MAXBOTIX_NUM_READINGS + WATER_TEMP_NUM_READINGS + RADAR_NUM_READINGS + BATTERY_NUM_READINGS + SOIL_NUM_READINGS + SOIL5_NUM_READINGS)
 #endif
 
 // --- Fallback banner name when no sensor is defined ---

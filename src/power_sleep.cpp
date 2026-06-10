@@ -20,6 +20,7 @@
 #include "n_logger_config.h"
 #include "utilities.h"
 #include "rtc_utils.h"
+#include "log.h"
 
 #ifdef SD_MODULE
 #include <SdFat.h>
@@ -45,7 +46,7 @@ void sdBusSuspend() {
   sdSPI.end();
 
   pinMode(SD_PIN_CS, OUTPUT);
-  digitalWrite(SD_PIN_CS, HIGH);   // De-select card
+  digitalWrite(SD_PIN_CS, HIGH);
 
   pinMode(SD_PIN_SCLK, INPUT);
   pinMode(SD_PIN_MOSI, INPUT);
@@ -101,10 +102,10 @@ void prepareForDeepSleep(int minutes) {
   digitalWrite(LED_PIN, LOW);
 
 #ifdef DEBUG
-  Serial.println();
-  Serial.print("WAKE UP IN ");
-  Serial.print(moduleCfg.measure_time);
-  Serial.println(" MIN");
+  Logln("");
+  Log("WAKE UP IN ");
+  Log(String(moduleCfg.measure_time).c_str());
+  Logln(" MIN");
 #endif
 
   configureAlarm(interval);

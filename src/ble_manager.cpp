@@ -11,6 +11,7 @@
 #include "ble_manager.h"
 
 /* ------------------------------ Includes ------------------------------ */
+#include <esp_bt.h>
 #include <BLEDevice.h>
 #include <BLEServer.h>
 #include <BLEUtils.h>
@@ -46,6 +47,8 @@ extern BLECharacteristic* pCharacteristic;
 /* Declared in main module */
 extern bool bleDeviceConnected;
 
+RTC_DATA_ATTR bool bleStreamingActive = false;
+
 /* ---------------------------- BLE Callbacks ---------------------------- */
 
 /**
@@ -55,9 +58,8 @@ class MyCallbacks : public BLECharacteristicCallbacks {
   void onWrite(BLECharacteristic* pChar) override {
     String rxValue = pChar->getValue().c_str();
     if (rxValue.length() > 0) {
-      Serial.print("📩 Command received: ");
-      Serial.println(rxValue);
-
+      Log("Command received: ");
+      Logln(rxValue.c_str());
       bleStartTime = millis();
       processCommand(rxValue);
     }
@@ -69,12 +71,12 @@ class MyCallbacks : public BLECharacteristicCallbacks {
  */
 class ServerConnectionCallbacks : public BLEServerCallbacks {
   void onConnect(BLEServer* server) override {
-    Serial.println("🟢 BLE: Device connected");
+    Logln("BLE: Device connected");
     bleDeviceConnected = true;
   }
 
   void onDisconnect(BLEServer* server) override {
-    Serial.println("🔴 BLE: Device disconnected");
+    Logln("BLE: Device disconnected");
     bleDeviceConnected = false;
     server->startAdvertising();
   }
@@ -86,7 +88,7 @@ class ServerConnectionCallbacks : public BLEServerCallbacks {
  * @brief Initializes BLE, configures service/characteristic and starts advertising.
  */
 void startBLE() {
-  Serial.println("🔵 Starting BLE...");
+  Logln("Starting BLE...");
 
   BLEDevice::init(N_LOGGER_BLE_NAME);
 
@@ -111,14 +113,14 @@ void startBLE() {
   bleActive    = true;
   bleStartTime = millis();
 
-  Serial.println("✅ BLE active and advertising");
+  Logln("BLE active and advertising");
 }
 
 /**
  * @brief Fully deinitializes the BLE stack.
  */
 void stopBLE() {
-  Serial.println("🟠 Stopping BLE...");
+  Logln("Stopping BLE...");
   BLEDevice::deinit(true);
   bleActive = false;
 }
@@ -160,13 +162,10 @@ void processCommand(String cmd) {
       EEPROM.commit();
       EEPROM.end();
 
-#ifdef DEBUG
-      Serial.println("NEW CONFIGURATION:");
-      Serial.println("- measure_time:   " + String(moduleCfg.measure_time));
-      Serial.println("- bluetooth_time: " + String(moduleCfg.bluetooth_time));
-      Serial.println("- GPRS_time:      " + String(moduleCfg.GPRS_time));
-      Serial.println();
-#endif
+      Logln("NEW CONFIGURATION:");
+      Logf("- measure_time:   %d\n", moduleCfg.measure_time);
+      Logf("- bluetooth_time: %d\n", moduleCfg.bluetooth_time);
+      Logf("- GPRS_time:      %d\n", moduleCfg.GPRS_time);
 
       digitalWrite(LED_PIN, LOW);  delay(200);
       digitalWrite(LED_PIN, HIGH);
@@ -185,27 +184,36 @@ void processCommand(String cmd) {
     RtcDateTime newDT(year, month, day, hour, minute, second);
     rtc.SetDateTime(newDT);
 
-#ifdef DEBUG
-    Serial.print("New date: ");
+    Log("New date: ");
     rtcNow = rtc.GetDateTime();
     formatDateTime(rtcNow);
-    Serial.println(dateStr);
-#endif
+    Logln(dateStr);
 
     digitalWrite(LED_PIN, LOW);  delay(200);
     digitalWrite(LED_PIN, HIGH);
   }
 
-  /* ------------------------- Reserved command C ------------------------- */
+  else if (cmd == "START") {
+    bleStreamingActive = true;
+    Logln("Streaming ENABLED - all Serial output will be mirrored over BLE");
+    digitalWrite(LED_PIN, LOW);  delay(200);
+    digitalWrite(LED_PIN, HIGH);
+  }
+
+  else if (cmd == "STOP") {
+    bleStreamingActive = false;
+    Logln("Streaming DISABLED - Serial output will NOT be mirrored over BLE");
+    digitalWrite(LED_PIN, LOW);  delay(200);
+    digitalWrite(LED_PIN, HIGH);
+  }
+
   else if (cmd == "C") {
     // Reserved for future use
   }
 
   /* ------------------------------ DATA --------------------------------- */
   else if (cmd == "DATA") {
-#ifdef DEBUG
-    Serial.println("DOWNLOADING DATA (placeholder)");
-#endif
+    Logln("DOWNLOADING DATA (placeholder)");
   }
 
   /* -------------------------- Unknown command --------------------------- */
@@ -214,5 +222,44 @@ void processCommand(String cmd) {
       digitalWrite(LED_PIN, LOW);  delay(100);
       digitalWrite(LED_PIN, HIGH); delay(100);
     }
+  }
+}
+
+/* ---------------------------------------------------------------------- */
+/*  Serial-to-BLE streaming helpers                                       */
+/* ---------------------------------------------------------------------- */
+
+static void bleNotifyIfStreaming(const char *s) {
+#if !defined(NO_BLE_STREAMING)
+  if (bleStreamingActive && bleDeviceConnected && pCharacteristic != nullptr) {
+    pCharacteristic->setValue((uint8_t*)s, strlen(s));
+    pCharacteristic->notify();
+  }
+#else
+  (void)s;
+#endif
+}
+
+void Log(const char *s) {
+  Serial.print(s);
+  bleNotifyIfStreaming(s);
+}
+
+void Logln(const char *s) {
+  Serial.println(s);
+  String withNl = String(s) + "\r\n";
+  bleNotifyIfStreaming(withNl.c_str());
+}
+
+void Logf(const char *fmt, ...) {
+  char buf[256];
+  va_list args;
+  va_start(args, fmt);
+  int len = vsnprintf(buf, sizeof(buf), fmt, args);
+  va_end(args);
+
+  if (len > 0) {
+    Serial.print(buf);
+    bleNotifyIfStreaming(buf);
   }
 }

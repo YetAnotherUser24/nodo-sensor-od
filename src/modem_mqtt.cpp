@@ -21,6 +21,7 @@
 #include <RtcDS3231.h>
 
 #include "config.h"
+#include "log.h"
 
 #define SerialMon Serial
 #define SerialAT  Serial1
@@ -58,7 +59,7 @@ static uint8_t rpcCount = 0;
 static String getRpcMethod(const String& payload) {
   StaticJsonDocument<128> doc;
   if (deserializeJson(doc, payload)) {
-    Serial.println("JSON parse error");
+    Logln("JSON parse error");
     return "";
   }
   return doc["method"] | "";
@@ -89,7 +90,10 @@ void onMqttMessage(char* topic, byte* payload, unsigned int length) {
       rpcCount++;
     }
 
-    Serial.println("📥 RPC queued -> " + t + " :: " + p);
+    Log("RPC queued -> ");
+    Log(t.c_str());
+    Log(" :: ");
+    Logln(p.c_str());
 
     // Send ACK response
     int slash = t.lastIndexOf('/');
@@ -103,11 +107,11 @@ void onMqttMessage(char* topic, byte* payload, unsigned int length) {
       serializeJson(doc, out);
 
 #ifdef DEBUG
-      Serial.println("📤 MQTT → RPC Response:");
-      Serial.print("   Topic: ");
-      Serial.println(respTopic);
-      Serial.print("   Payload: ");
-      Serial.println(out);
+      Logln("MQTT -> RPC Response:");
+      Log("   Topic: ");
+      Logln(respTopic.c_str());
+      Log("   Payload: ");
+      Logln(out.c_str());
 #endif
 
       mqtt.publish(respTopic.c_str(), out.c_str());
@@ -136,7 +140,7 @@ bool initA7670() {
 
 #ifdef DEBUG
     if (forceModemReset) {
-      Serial.println("🔄 Performing forced modem reset...");
+      Logln("Performing forced modem reset...");
     }
 #endif
 
@@ -156,10 +160,10 @@ bool initA7670() {
     digitalWrite(BOARD_PWRKEY_PIN, HIGH);  delay(1000);
     digitalWrite(BOARD_PWRKEY_PIN, LOW);
 
-    forceModemReset = false;  // Clear flag after reset
+    forceModemReset = false;
 
   } else {
-    Serial.println("Wakeup modem !");
+    Logln("Wakeup modem !");
     gpio_hold_dis((gpio_num_t)MODEM_DTR_PIN);
 
 #ifdef BOARD_POWERON_PIN
@@ -173,7 +177,7 @@ bool initA7670() {
     delay(1000);
   }
 
-  Serial.println("Start modem...");
+  Logln("Start modem...");
   delay(3000);
 
   if (!modem.init()) {
@@ -188,27 +192,27 @@ bool initA7670() {
     modem.simUnlock(GSM_PIN);
   }
 
-  SerialMon.print("Waiting for network...");
+  Log("Waiting for network...");
   if (!modem.waitForNetwork()) {
-    SerialMon.println(" fail");
+    Logln(" fail");
     delay(10000);
     return false;
   }
-  SerialMon.println(" success");
+  Logln(" success");
 
   if (!modem.gprsConnect(APN, APN_USER, APN_PASS)) {
-    SerialMon.println("GPRS attach fail");
+    Logln("GPRS attach fail");
     delay(10000);
     return false;
   }
 
-  SerialMon.println("GPRS connected");
+  Logln("GPRS connected");
 
   mqtt.setServer(MQTT_HOST, MQTT_PORT);
   bool mqttOk = connectMQTT();
 
   if (!mqttOk) {
-    SerialMon.println("MQTT connection failed, continuing in offline mode.");
+    Logln("MQTT connection failed, continuing in offline mode.");
   }
 
   return mqttOk;
@@ -223,7 +227,7 @@ void sleepA7670() {
   if (mqtt.connected()) mqtt.disconnect();
 
   modem.gprsDisconnect();
-  Serial.println("Enter modem sleep mode!");
+  Logln("Enter modem sleep mode!");
 
   pinMode(MODEM_DTR_PIN, OUTPUT);
   digitalWrite(MODEM_DTR_PIN, HIGH);
@@ -231,19 +235,19 @@ void sleepA7670() {
   gpio_deep_sleep_hold_en();
 
   if (!modem.sleepEnable(true)) {
-    Serial.println("Modem sleep failed!");
+    Logln("Modem sleep failed!");
   } else {
-    Serial.println("Modem entered sleep mode.");
+    Logln("Modem entered sleep mode.");
   }
 
   delay(1000);
 
   uint32_t t0 = millis();
   while (modem.testAT() && (millis() - t0) < 5000UL) {
-    Serial.print(".");
+    Log(".");
     delay(250);
   }
-  Serial.println("\nModem is not responding, modem has slept!");
+  Logln("Modem is not responding, modem has slept!");
 
 #ifdef BOARD_POWERON_PIN
   gpio_hold_en((gpio_num_t)BOARD_POWERON_PIN);
@@ -271,27 +275,27 @@ bool connectMQTT(uint8_t maxAttempts, uint16_t delayMs) {
     return true;
   }
 
-  SerialMon.print("Connecting MQTT...");
+  Log("Connecting MQTT...");
 
   for (uint8_t attempt = 1; attempt <= maxAttempts; attempt++) {
-    SerialMon.printf(" (attempt %u/%u)", attempt, maxAttempts);
+    Logf(" (attempt %u/%u)", attempt, maxAttempts);
 
     if (mqtt.connect(MQTT_CLIENT_ID, MQTT_TOKEN, "")) {
-      SerialMon.println(" ✓ connected.");
+      Logln(" connected.");
       mqtt.setCallback(onMqttMessage);
       mqtt.subscribe(TB_RPC_SUB_TOPIC);
       return true;
     }
 
-    SerialMon.print(".");
+    Log(".");
 
     if (attempt < maxAttempts) {
-      SerialMon.printf(", retrying in %ums...\n", delayMs);
+      Logf(", retrying in %ums...\n", delayMs);
       delay(delayMs);
     }
   }
 
-  SerialMon.println(" All attempts failed.");
+  Logln(" All attempts failed.");
   return false;
 }
 
@@ -306,16 +310,16 @@ bool connectMQTT(uint8_t maxAttempts, uint16_t delayMs) {
  */
 void processQueuedRpcCommands() {
   if (rpcCount == 0) {
-    Serial.println("ℹ️ No RPC queued.");
+    Logln("No RPC queued.");
     return;
   }
 
-  Serial.printf("🧾 Processing %u RPC command(s):\n", rpcCount);
+  Logf("Processing %u RPC command(s):\n", rpcCount);
 
   for (uint8_t i = 0; i < rpcCount; i++) {
 
-    Serial.printf("  [%u] Topic: %s\n", i + 1, rpcQueue[i].topic.c_str());
-    Serial.printf("      Payload: %s\n", rpcQueue[i].payload.c_str());
+    Logf("  [%u] Topic: %s\n", i + 1, rpcQueue[i].topic.c_str());
+    Logf("      Payload: %s\n", rpcQueue[i].payload.c_str());
 
     String cmd = getRpcMethod(rpcQueue[i].payload);
     cmd.trim();
@@ -337,10 +341,10 @@ void processQueuedRpcCommands() {
         EEPROM.end();
 
 #ifdef DEBUG
-        Serial.println("Updated configuration:");
-        Serial.printf(" - Measure:   %d\n", moduleCfg.measure_time);
-        Serial.printf(" - Bluetooth: %d\n", moduleCfg.bluetooth_time);
-        Serial.printf(" - GPRS:      %d\n\n", moduleCfg.GPRS_time);
+        Logln("Updated configuration:");
+        Logf(" - Measure:   %d\n", moduleCfg.measure_time);
+        Logf(" - Bluetooth: %d\n", moduleCfg.bluetooth_time);
+        Logf(" - GPRS:      %d\n\n", moduleCfg.GPRS_time);
 #endif
       }
 
@@ -361,10 +365,10 @@ void processQueuedRpcCommands() {
       rtc.SetDateTime(newDt);
 
 #ifdef DEBUG
-      Serial.print("New date: ");
+      Log("New date: ");
       rtcNow = rtc.GetDateTime();
       formatDateTime(rtcNow);
-      Serial.println(dateStr);
+      Logln(dateStr);
 #endif
 
       digitalWrite(LED_PIN, LOW); delay(500);
@@ -392,17 +396,17 @@ void processQueuedRpcCommands() {
 bool publishJsonLineToTB(const String& jsonOut) {
   if (!mqtt.connected()) {
     if (!connectMQTT()) {
-      SerialMon.println("Publish failed: MQTT unavailable.");
+      Logln("Publish failed: MQTT unavailable.");
       return false;
     }
   }
 
 #ifdef DEBUG
-  Serial.println("📤 MQTT → Publishing to ThingsBoard:");
-  Serial.print("   Topic: ");
-  Serial.println(MQTT_TOPIC);
-  Serial.print("   Payload: ");
-  Serial.println(jsonOut);
+  Logln("MQTT -> Publishing to ThingsBoard:");
+  Log("   Topic: ");
+  Logln(MQTT_TOPIC);
+  Log("   Payload: ");
+  Logln(jsonOut.c_str());
 #endif
 
   bool ok = mqtt.publish(MQTT_TOPIC, jsonOut.c_str());
@@ -415,13 +419,13 @@ bool publishJsonLineToTB(const String& jsonOut) {
 
 #ifdef DEBUG
   if (ok) {
-    Serial.println("   ✅ Published successfully (queued)");
-    Serial.print("   MQTT State: ");
-    Serial.println(mqtt.state());
+    Logln("   Published successfully (queued)");
+    Log("   MQTT State: ");
+    Logln(String(mqtt.state()).c_str());
   } else {
-    Serial.println("   ❌ Publish failed");
-    Serial.print("   MQTT State: ");
-    Serial.println(mqtt.state());
+    Logln("   Publish failed");
+    Log("   MQTT State: ");
+    Logln(String(mqtt.state()).c_str());
   }
 #endif
 

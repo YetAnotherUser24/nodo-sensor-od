@@ -14,7 +14,7 @@ BLE is used for:
 - Setting BLE and GPRS windows  
 - Setting RTC date/time  
 - Forcing manual upload  
-- Live sensor streaming  
+- Live sensor streaming via Serial-to-BLE mirroring  
 - Reading current configuration  
 
 BLE activates only when requested and shuts down automatically to save power.
@@ -25,23 +25,21 @@ BLE activates only when requested and shuts down automatically to save power.
 
 ### Device Name
 ```
-LILYGO_A7670_BLE
+n-logger-BLE
 ```
 
 ### Service UUID
 ```
-6E400001-B5A3-F393-E0A9-E50E24DCCA9E
+4fafc201-1fb5-459e-8fcc-c5c9c331914b
 ```
 
-### RX Characteristic UUID (Write)
+### Characteristic UUID (Read/Write/Notify)
 ```
-6E400002-B5A3-F393-E0A9-E50E24DCCA9E
+beb5483e-36e1-4688-b7f5-ea07361b26a8
 ```
 
-### TX Characteristic UUID (Notify)
-```
-6E400003-B5A3-F393-E0A9-E50E24DCCA9E
-```
+All commands are written to this characteristic. Streaming data is pushed
+to the same characteristic via BLE Notify.
 
 ---
 
@@ -53,13 +51,13 @@ All commands follow the syntax:
 <COMMAND>-<ARGS>
 ```
 
-Commands are case-sensitive.
+Commands are case-insensitive (the firmware uppercases them internally).
 
 Examples:
 ```
 T-5-1-10
 D-2025-11-28-23-38-00
-SEND
+START
 STOP
 ```
 
@@ -104,9 +102,9 @@ D-YYYY-MM-DD-HH-MM-SS
 D-2025-11-28-23-38-00
 ```
 
-On success, BLE returns:
+On success, the device confirms via BLE Notify:
 ```
-RTC SET OK
+New date: 2025-11-28 23:38:00
 ```
 
 The RTC time is used for:
@@ -116,44 +114,74 @@ The RTC time is used for:
 
 ---
 
-# 6. Manual Upload Commands
+# 6. Streaming Commands (NEW)
 
-### Upload pending files to cloud:
+### Enable Serial-to-BLE mirroring:
 ```
-SEND
+START
 ```
 
-Triggers:
-- Start sending measurements to device  
+When issued, the device sets a persistent flag (`bleStreamingActive = true`
+in RTC backup memory) that survives deep sleep. On every subsequent wake
+cycle:
 
-### Cancel ongoing upload:
+1. **BLE is automatically turned on** (even if `bluetooth_time` would not
+   normally activate it this cycle).
+2. All `Log()`/`Logln()`/`Logf()` output is pushed to the
+   connected BLE client via Notify in addition to the Serial Monitor.
+
+This allows you to see exactly what the device prints — measurements,
+status, errors — in real time from nRF Connect.
+
+### Disable Serial-to-BLE mirroring:
 ```
 STOP
 ```
 
-Stops:
-- Stop sending measurements to device  
+Resets the streaming flag. BLE returns to its normal schedule
+(`bluetooth_time` intervals only). Serial output continues to the
+Serial Monitor only.
+
+### Power Notes
+
+- `START` causes BLE to run on **every** wake cycle instead of only
+  at `bluetooth_time` intervals. This increases power consumption.
+- `STOP` restores normal power-saving behaviour.
 
 ---
-# 7. BLE Troubleshooting
+
+# 7. Reserved Commands
+
+### DATA
+```
+DATA
+```
+Placeholder for future data download functionality.
+
+---
+
+# 8. BLE Troubleshooting
 
 ### 1. Device does not appear in scan  
-✔ Ensure BLE window is open  
+✔ Ensure BLE window is open (send `T-1-5-10` to make it appear every
+   minute for 5 minutes)  
 ✔ Ensure board is not sleeping  
-✔ Check LED indicator (steady ON = waiting for BLE)
+✔ Check LED indicator (steady ON = BLE active, blinking = BLE active
+   but no client connected)
 
 ### 2. Commands not accepted  
 ✔ Ensure correct format  
 ✔ Check MTU settings in your BLE app  
+✔ Three LED blinks = unknown command
 
 ### 3. Streaming stops abruptly  
-✔ BLE window expired  
+✔ BLE window expired (default 30 seconds)  
 ✔ Weak signal  
 ✔ Device entered measurement or upload cycle  
 
 ---
 
-# 8. Related Documentation
+# 9. Related Documentation
 
 - **ARCHITECTURE.md** – how BLE integrates with whole system  
 - **INSTALLATION.md** – setup and building  

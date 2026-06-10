@@ -28,6 +28,7 @@
 #include "rtc_utils.h"
 
 #include "config.h"
+#include "log.h"
 
 #include <ArduinoJson.h>
 #include <EEPROM.h>
@@ -205,30 +206,30 @@ void takeMeasurement() {
 #endif
 
 #ifdef DEBUG
-  Serial.println("📊 ========== MEASUREMENT TAKEN ==========");
-  Serial.print("   Timestamp: ");
-  Serial.print(secondsSince2000);
-  Serial.print(" (");
+  Logln("========== MEASUREMENT TAKEN ==========");
+  Log("   Timestamp: ");
+  Log(String(secondsSince2000).c_str());
+  Log(" (");
   formatDateTime(rtcNow);
-  Serial.print(dateStr);
-  Serial.println(" GMT)");
+  Log(dateStr);
+  Logln(" GMT)");
 #ifdef SENSOR_BATTERY_ADC
-  Serial.print("   Battery: ");
-  Serial.print(telemetryPayload.battery);
-  Serial.println(" mV");
+  Log("   Battery: ");
+  Log(String(telemetryPayload.battery).c_str());
+  Logln(" mV");
 #endif
-  Serial.print("   Temperature: ");
-  Serial.print(tempCenti / 100.0, 2);
-  Serial.println(" °C");
-  Serial.print("   Sensor Readings: [");
+  Log("   Temperature: ");
+  Log(String(tempCenti / 100.0, 2).c_str());
+  Logln(" C");
+  Log("   Sensor Readings: [");
   for (int i = 0; i < MAX_SENSOR_READINGS; i++) {
-    Serial.print(telemetryPayload.sensorReadings[i]);
-    if (i < MAX_SENSOR_READINGS - 1) Serial.print(", ");
+    Log(String(telemetryPayload.sensorReadings[i]).c_str());
+    if (i < MAX_SENSOR_READINGS - 1) Log(", ");
   }
-  Serial.println("]");
-  Serial.print("   Status: 0x");
-  Serial.println(telemetryPayload.status, HEX);
-  Serial.println("==========================================");
+  Logln("]");
+  Log("   Status: 0x");
+  Logln(String(telemetryPayload.status, HEX).c_str());
+  Logln("==========================================");
 #endif
 
   /* EEPROM page building: ts(4) + readings(N*2) + temp(2) + status(4) + pad + sent */
@@ -290,13 +291,13 @@ void takeMeasurement() {
 void sendSDPendingToThingsboard() {
 #ifdef GPRS_MODULE
   if (!mqttAvailable) {
-    Serial.println("MQTT unavailable, skipping SD uploads.");
+    Logln("MQTT unavailable, skipping SD uploads.");
     return;
   }
 
   if (!mqtt.connected()) {
     if (!connectMQTT()) {
-      Serial.println("MQTT connection lost, skipping SD uploads.");
+      Logln("MQTT connection lost, skipping SD uploads.");
       mqttAvailable = false;
       return;
     }
@@ -343,7 +344,7 @@ void sendSDPendingToThingsboard() {
 void sendEEPROMToThingsboard() {
 #ifdef GPRS_MODULE
   if (!mqttAvailable) {
-    Serial.println("MQTT unavailable, skipping EEPROM uploads.");
+    Logln("MQTT unavailable, skipping EEPROM uploads.");
     return;
   }
 
@@ -387,14 +388,14 @@ void sendEEPROMToThingsboard() {
       serializeJson(doc, jsonOut);
 
 #ifdef DEBUG
-      Serial.println("📤 MQTT → EEPROM Data:");
-      Serial.print("   Payload: ");
-      Serial.println(jsonOut);
+      Logln("MQTT -> EEPROM Data:");
+      Log("   Payload: ");
+      Logln(jsonOut.c_str());
 #endif
 
       if (!mqtt.connected()) {
         if (!connectMQTT()) {
-          Serial.println("MQTT connection lost, stopping EEPROM uploads.");
+          Logln("MQTT connection lost, stopping EEPROM uploads.");
           mqttAvailable = false;
           return;
         }
@@ -409,9 +410,9 @@ void sendEEPROMToThingsboard() {
 
 #ifdef DEBUG
       if (ok) {
-        Serial.println("   ✅ Published successfully (queued)");
+        Logln("   Published successfully (queued)");
       } else {
-        Serial.println("   ❌ Publish failed");
+        Logln("   Publish failed");
       }
 #endif
 

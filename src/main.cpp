@@ -67,8 +67,7 @@ bool bleDeviceConnected = false;
 unsigned long lastBleLedMillis = 0;
 bool bleLedState = false;
 
-/** Blink period in milliseconds when BLE is connected. */
-const unsigned long BLE_WAIT_BLINK = 1000;   // 1s blink cuando espera conexión
+const unsigned long BLE_WAIT_BLINK = 1000;
 
 uint64_t device_ID = ESP.getEfuseMac();
 
@@ -84,7 +83,7 @@ uint64_t device_ID = ESP.getEfuseMac();
 #define TINY_GSM_USE_GPRS   true
 #define TINY_GSM_USE_WIFI   false
 
-#define GSM_PIN ""              /**< SIM unlock PIN if any. */
+#define GSM_PIN ""
 
 #define TINY_GSM_RX_BUFFER           1024
 #define MODEM_POWERON_PULSE_WIDTH_MS 100
@@ -132,9 +131,9 @@ char               dateStr[20];
 /* ----------------------------- Globals ----------------------------- */
 
 RTC_DATA_ATTR int      bootCount       = 0;
-RTC_DATA_ATTR uint16_t eepromWritePage = 0;   /**< Next data page after header. */
-RTC_DATA_ATTR uint8_t  failedTransmissionCount = 0;  /**< Consecutive GPRS/MQTT failures. */
-RTC_DATA_ATTR bool     forceModemReset = false;  /**< Force full modem reset on next cycle. */
+RTC_DATA_ATTR uint16_t eepromWritePage = 0;
+RTC_DATA_ATTR uint8_t  failedTransmissionCount = 0;
+RTC_DATA_ATTR bool     forceModemReset = false;
 
 bool measureDone      = false;
 bool bluetoothDone    = false;
@@ -288,11 +287,11 @@ void setup() {
         resetEEPromHeader(EEPROM_ADDRESS);
         eepromWritePage = 0;
 #ifdef DEBUG
-        Serial.println(F("- EEPROM flushed."));
+        Logln("- EEPROM flushed.");
 #endif
       } else {
 #ifdef DEBUG
-        Serial.println(F("Failed to flush EEPROM. SD card missing? Continuing anyway."));
+        Logln("Failed to flush EEPROM. SD card missing? Continuing anyway.");
 #endif
         error(3, LED_PIN);
       }
@@ -302,32 +301,36 @@ void setup() {
     if (moduleCfg.measure_time > 0 &&
         (rtcNow.Minute() % moduleCfg.measure_time == 0)) {
 #ifdef DEBUG
-      Serial.println("SAVE MEASURE LEVEL IN EEPROM");
+      Logln("SAVE MEASURE LEVEL IN EEPROM");
 #endif
       takeMeasurement();
-      Serial.println("MT TIME...");
+      Logln("MT TIME...");
     }
 
-    // Bluetooth window
+    /* Bluetooth window — forced ON if streaming is active */
     if (moduleCfg.bluetooth_time > 0 &&
         (rtcNow.Minute() % moduleCfg.bluetooth_time == 0)) {
 #ifdef DEBUG
-      Serial.println("TRY TO CONNECT TO BLUETOOTH");
+      Logln("TRY TO CONNECT TO BLUETOOTH");
 #endif
       startBLE();
     }
 
-    // GPRS window
+    /* Force BLE ON every cycle if streaming was previously active */
+    if (bleStreamingActive) {
+      startBLE();
+    }
+
 #ifdef GPRS_MODULE
     if (moduleCfg.GPRS_time > 0 &&
         (rtcNow.Minute() % moduleCfg.GPRS_time == 0)) {
 #ifdef DEBUG
-      Serial.println("TRY TO CONNECT TO GPRS AND SEND STORED DATA");
+      Logln("TRY TO CONNECT TO GPRS AND SEND STORED DATA");
 #endif
       mqttAvailable = initA7670();
 
       if (mqttAvailable) {
-        failedTransmissionCount = 0;  // Reset on successful connection
+        failedTransmissionCount = 0;
 
         sendSDPendingToThingsboard();
         sendEEPROMToThingsboard();
@@ -343,18 +346,18 @@ void setup() {
         failedTransmissionCount++;
 
 #ifdef DEBUG
-        Serial.print("MQTT unavailable. Data remains in offline storage. (Failure ");
-        Serial.print(failedTransmissionCount);
-        Serial.print("/");
-        Serial.print(MAX_FAILED_TRANSMISSIONS);
-        Serial.println(")");
+        Log("MQTT unavailable. Data remains in offline storage. (Failure ");
+        Log(String(failedTransmissionCount).c_str());
+        Log("/");
+        Log(String(MAX_FAILED_TRANSMISSIONS).c_str());
+        Logln(")");
 #endif
 
         // Force full modem reset after consecutive failures
         if (failedTransmissionCount >= MAX_FAILED_TRANSMISSIONS) {
 #ifdef DEBUG
-          Serial.println("⚠ Too many consecutive transmission failures!");
-          Serial.println(" Forcing full modem reset on next cycle...");
+          Logln("Too many consecutive transmission failures!");
+          Logln(" Forcing full modem reset on next cycle...");
 #endif
           forceModemReset = true;
           failedTransmissionCount = 0;
@@ -369,23 +372,23 @@ void setup() {
     // First boot after power-on/reset
     firstRun = true;
 #ifdef DEBUG
-    Serial.println("UPLOADING TO SD CARD:");
+    Logln("UPLOADING TO SD CARD:");
     i2c_eeprom_read_buffer(EEPROM_ADDRESS, 0, eepromPageBuf, 32);
     for (int n = 0; n < 32; n++) {
-      Serial.print(eepromPageBuf[n]);
-      Serial.print(F(", "));
+      Log(String(eepromPageBuf[n]).c_str());
+      Log(", ");
     }
-    Serial.println();
+    Logln("");
 #endif
 
     if (dumpEEPROM()) {
       resetEEPromHeader(EEPROM_ADDRESS);
 #ifdef DEBUG
-      Serial.println(F("- EEPROM flushed."));
+    Logln("- EEPROM flushed.");
 #endif
     } else {
 #ifdef DEBUG
-      Serial.println(F("Failed to flush EEPROM. SD card missing? Continuing anyway."));
+      Logln("Failed to flush EEPROM. SD card missing? Continuing anyway.");
 #endif
       error(3, LED_PIN);
     }
@@ -393,17 +396,17 @@ void setup() {
     delay(1000);
 
 #ifdef DEBUG
-    Serial.println("- Connecting to Internet: ");
+    Logln("- Connecting to Internet: ");
 #endif
 
-    Serial.println("First run...");
+    Logln("First run...");
     takeMeasurement();
 
 #ifdef GPRS_MODULE
     mqttAvailable = initA7670();
 
     if (mqttAvailable) {
-      failedTransmissionCount = 0;  // Reset on successful connection
+      failedTransmissionCount = 0;
 
       sendSDPendingToThingsboard();
       sendEEPROMToThingsboard();
@@ -419,11 +422,11 @@ void setup() {
       failedTransmissionCount++;
 
 #ifdef DEBUG
-      Serial.print("MQTT unavailable on first run. Data saved to offline storage. (Failure ");
-      Serial.print(failedTransmissionCount);
-      Serial.print("/");
-      Serial.print(MAX_FAILED_TRANSMISSIONS);
-      Serial.println(")");
+      Log("MQTT unavailable on first run. Data saved to offline storage. (Failure ");
+      Log(String(failedTransmissionCount).c_str());
+      Log("/");
+      Log(String(MAX_FAILED_TRANSMISSIONS).c_str());
+      Logln(")");
 #endif
 
       // Note: firstRun already true, will retry with full reset next cycle
@@ -460,7 +463,7 @@ void loop() {
 
   if (bleActive) {
     if (millis() - bleStartTime > BLE_ACTIVE_TIME) {
-      Serial.println(" BLE time expired, entering sleep...");
+      Logln(" BLE time expired, entering sleep...");
       stopBLE();
       prepareForDeepSleep(moduleCfg.measure_time);
     }

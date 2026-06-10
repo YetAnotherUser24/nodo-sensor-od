@@ -77,16 +77,27 @@
  *  Enable sensors by defining one or more of these flags at build time:
  *    -DSENSOR_MAXBOTIX_UART     = MaxBotix MB12xx ultrasonic distance (UART)
  *    -DSENSOR_WATER_TEMP        = Water surface temperature (I2C)
- *    -DSENSOR_RADAR             = Radar distance sensor (placeholder)
+ *    -DSENSOR_RADAR             = Radar distance sensor (Modbus RTU, direct UART)
+ *    -DSENSOR_SOIL_3TIP         = 3-tip soil moisture/temperature (Modbus RTU, RS-485)
  *    -DSENSOR_BATTERY_ADC       = Battery voltage via ADC pin
  *
+ *  NOTE: SENSOR_RADAR and SENSOR_SOIL_3TIP share UART pins (GPIO 34/32) and
+ *  power pin (GPIO 19). They are mutually exclusive — do NOT enable both in
+ *  the same build.
+ *
  *  Each sensor defines its own pins, number of readings, and warmup time.
- *  Multiple sensors can be active simultaneously.
+ *  Multiple compatible sensors can be active simultaneously.
  *  MAX_SENSOR_READINGS is auto-computed from all enabled sensors.
  *
  *  To override a pin at build time, define it before this header is included
  *  (e.g. -DMAXBOTIX_RX_PIN=22 in platformio.ini build_flags).
  * -------------------------------------------------------------------------- */
+
+// Radar and 3-tip soil sensor share UART pins (GPIO 34/32) and power pin (GPIO 19).
+// They must NOT be enabled simultaneously.
+#if defined(SENSOR_RADAR) && defined(SENSOR_SOIL_3TIP)
+#error "SENSOR_RADAR and SENSOR_SOIL_3TIP share hardware pins and are mutually exclusive."
+#endif
 
 // --- MaxBotix MB12xx ultrasonic sensor over UART ---
 #ifdef SENSOR_MAXBOTIX_UART
@@ -110,12 +121,37 @@
   #define WATER_TEMP_NUM_READINGS 0
 #endif
 
-// --- Radar distance sensor (placeholder) ---
+// --- Radar distance sensor (Modbus RTU over direct UART) ---
 #ifdef SENSOR_RADAR
+  #define RADAR_RX_PIN 34
+  #define RADAR_TX_PIN 32
+  #define RADAR_PWR_PIN 19
+  #define RADAR_BAUD 9600
+  #define RADAR_SLAVE_ID 1
   #define RADAR_NUM_READINGS 5
+  #define RADAR_MODBUS_REGISTER 0x0001
+  #define RADAR_WARMUP_MS 200
+  #define RADAR_SAMPLE_TIMEOUT_MS 1500
   #define SENSOR_NAME "radar"
 #else
   #define RADAR_NUM_READINGS 0
+#endif
+
+// --- 3-Tip Soil Moisture/Temperature sensor (Modbus RTU over RS-485) ---
+#ifdef SENSOR_SOIL_3TIP
+  #define SOIL_RX_PIN 34
+  #define SOIL_TX_PIN 32
+  #define SOIL_PWR_PIN 19
+  #define SOIL_DE_RE_PIN 0
+  #define SOIL_BAUD 4800
+  #define SOIL_SLAVE_ID 1
+  #define SOIL_NUM_READINGS 2
+  #define SOIL_MODBUS_READ_COUNT 2
+  #define SOIL_MODBUS_START_ADDR 0x0000
+  #define SOIL_WARMUP_MS 200
+  #define SENSOR_NAME "soil-3tip"
+#else
+  #define SOIL_NUM_READINGS 0
 #endif
 
 // --- Battery voltage via ADC ---
@@ -130,7 +166,7 @@
 
 // --- Compute total measurement slots ---
 #ifndef MAX_SENSOR_READINGS
-#define MAX_SENSOR_READINGS (MAXBOTIX_NUM_READINGS + WATER_TEMP_NUM_READINGS + RADAR_NUM_READINGS + BATTERY_NUM_READINGS)
+#define MAX_SENSOR_READINGS (MAXBOTIX_NUM_READINGS + WATER_TEMP_NUM_READINGS + RADAR_NUM_READINGS + BATTERY_NUM_READINGS + SOIL_NUM_READINGS)
 #endif
 
 // --- Fallback banner name when no sensor is defined ---
@@ -189,6 +225,8 @@ struct TelemetryPayload {
 #define STATUS_SD_CARD_BIT            17
 #define STATUS_TEMPERATURE_BIT        18
 #define STATUS_GRPS_BIT               19
+#define STATUS_RADAR_SENSOR_BIT       20
+#define STATUS_SOIL_SENSOR_BIT        21
 
 /* --------------------------------------------------------------------------
  *  Transmission Recovery

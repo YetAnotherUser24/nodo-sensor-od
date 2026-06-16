@@ -105,12 +105,24 @@
 
 // --- MaxBotix MB12xx ultrasonic sensor over UART ---
 #ifdef SENSOR_MAXBOTIX_UART
+  #ifndef MAXBOTIX_RX_PIN
   #define MAXBOTIX_RX_PIN 23
+  #endif
+  #ifndef MAXBOTIX_TX_PIN
   #define MAXBOTIX_TX_PIN 19
+  #endif
+  #ifndef MAXBOTIX_PWR_PIN
   #define MAXBOTIX_PWR_PIN 18
+  #endif
+  #ifndef MAXBOTIX_NUM_READINGS
   #define MAXBOTIX_NUM_READINGS 5
+  #endif
+  #ifndef MAXBOTIX_WARMUP_MS
   #define MAXBOTIX_WARMUP_MS 175
+  #endif
+  #ifndef MAXBOTIX_SAMPLE_TIMEOUT_MS
   #define MAXBOTIX_SAMPLE_TIMEOUT_MS 500
+  #endif
   #define SENSOR_NAME "maxbotix-uart"
 #else
   #define MAXBOTIX_NUM_READINGS 0
@@ -118,8 +130,12 @@
 
 // --- Water Surface Temperature sensor (I2C) ---
 #ifdef SENSOR_WATER_TEMP
+  #ifndef WATER_TEMP_ADDR
   #define WATER_TEMP_ADDR 0x44
+  #endif
+  #ifndef WATER_TEMP_NUM_READINGS
   #define WATER_TEMP_NUM_READINGS 3
+  #endif
   #define SENSOR_NAME "water-temp"
 #else
   #define WATER_TEMP_NUM_READINGS 0
@@ -127,15 +143,33 @@
 
 // --- Radar distance sensor (Modbus RTU over direct UART) ---
 #ifdef SENSOR_RADAR
+  #ifndef RADAR_RX_PIN
   #define RADAR_RX_PIN 34
+  #endif
+  #ifndef RADAR_TX_PIN
   #define RADAR_TX_PIN 32
+  #endif
+  #ifndef RADAR_PWR_PIN
   #define RADAR_PWR_PIN 19
+  #endif
+  #ifndef RADAR_BAUD
   #define RADAR_BAUD 9600
+  #endif
+  #ifndef RADAR_SLAVE_ID
   #define RADAR_SLAVE_ID 1
+  #endif
+  #ifndef RADAR_NUM_READINGS
   #define RADAR_NUM_READINGS 5
+  #endif
+  #ifndef RADAR_MODBUS_REGISTER
   #define RADAR_MODBUS_REGISTER 0x0001
+  #endif
+  #ifndef RADAR_WARMUP_MS
   #define RADAR_WARMUP_MS 200
+  #endif
+  #ifndef RADAR_SAMPLE_TIMEOUT_MS
   #define RADAR_SAMPLE_TIMEOUT_MS 1500
+  #endif
   #define SENSOR_NAME "radar"
 #else
   #define RADAR_NUM_READINGS 0
@@ -143,16 +177,36 @@
 
 // --- 3-Probe Soil Moisture/Temperature sensor (Modbus RTU over RS-485) ---
 #ifdef SENSOR_SOIL_3TIP
+  #ifndef SOIL_RX_PIN
   #define SOIL_RX_PIN 34
+  #endif
+  #ifndef SOIL_TX_PIN
   #define SOIL_TX_PIN 32
+  #endif
+  #ifndef SOIL_PWR_PIN
   #define SOIL_PWR_PIN 19
+  #endif
+  #ifndef SOIL_DE_RE_PIN
   #define SOIL_DE_RE_PIN 0
+  #endif
+  #ifndef SOIL_BAUD
   #define SOIL_BAUD 4800
+  #endif
+  #ifndef SOIL_SLAVE_ID
   #define SOIL_SLAVE_ID 1
+  #endif
+  #ifndef SOIL_NUM_READINGS
   #define SOIL_NUM_READINGS 2
+  #endif
+  #ifndef SOIL_MODBUS_READ_COUNT
   #define SOIL_MODBUS_READ_COUNT 2
+  #endif
+  #ifndef SOIL_MODBUS_START_ADDR
   #define SOIL_MODBUS_START_ADDR 0x0000
+  #endif
+  #ifndef SOIL_WARMUP_MS
   #define SOIL_WARMUP_MS 200
+  #endif
   #define SENSOR_NAME "soil-3probe"
 #else
   #define SOIL_NUM_READINGS 0
@@ -162,17 +216,39 @@
 // Measures moisture, temperature, conductivity (EC), pH, N, P, K.
 // Reads 7 holding registers starting at 0x0000.
 #ifdef SENSOR_SOIL_5TIP
+  #ifndef SOIL5_RX_PIN
   #define SOIL5_RX_PIN 34
+  #endif
+  #ifndef SOIL5_TX_PIN
   #define SOIL5_TX_PIN 32
+  #endif
+  #ifndef SOIL5_PWR_PIN
   #define SOIL5_PWR_PIN 19
+  #endif
+  #ifndef SOIL5_DE_RE_PIN
   #define SOIL5_DE_RE_PIN 0
+  #endif
+  #ifndef SOIL5_BAUD
   #define SOIL5_BAUD 4800
+  #endif
+  #ifndef SOIL5_SLAVE_ID
   #define SOIL5_SLAVE_ID 1
+  #endif
+  #ifndef SOIL5_SAMPLE_COUNT
   #define SOIL5_SAMPLE_COUNT 2
+  #endif
+  #ifndef SOIL5_MODBUS_READ_COUNT
   #define SOIL5_MODBUS_READ_COUNT 7
+  #endif
+  #ifndef SOIL5_MODBUS_START_ADDR
   #define SOIL5_MODBUS_START_ADDR 0x0000
+  #endif
+  #ifndef SOIL5_WARMUP_MS
   #define SOIL5_WARMUP_MS 200
+  #endif
+  #ifndef SOIL5_NUM_READINGS
   #define SOIL5_NUM_READINGS (SOIL5_SAMPLE_COUNT * SOIL5_MODBUS_READ_COUNT)
+  #endif
   #define SENSOR_NAME "soil-5probe"
 #else
   #define SOIL5_NUM_READINGS 0
@@ -180,9 +256,15 @@
 
 // --- Battery voltage via ADC ---
 #ifdef SENSOR_BATTERY_ADC
+  #ifndef BATTERY_ADC_PIN
   #define BATTERY_ADC_PIN 35
+  #endif
+  #ifndef BATTERY_NUM_READINGS
   #define BATTERY_NUM_READINGS 1
+  #endif
+  #ifndef BATTERY_ADC_MULTIPLIER
   #define BATTERY_ADC_MULTIPLIER 2
+  #endif
   #define SENSOR_NAME "battery-adc"
 #else
   #define BATTERY_NUM_READINGS 0

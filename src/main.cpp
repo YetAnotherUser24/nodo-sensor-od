@@ -220,6 +220,9 @@ void setup() {
   pinMode(LED_PIN, OUTPUT);
   digitalWrite(LED_PIN, LOW);
 
+  // Always initialize Serial so Log()/Logln()/Logf() work regardless of DEBUG
+  Serial.begin(115200);
+
   Wire.begin();
 
   // Load config from EEPROM
@@ -244,7 +247,6 @@ void setup() {
   boardRadiosOff();
 
 #ifdef DEBUG
-  Serial.begin(115200);
   Serial.println();
   Serial.printf("WELCOME TO %s ", N_LOGGER_DEVICE_NAME);
   Serial.printf("ChipID: %04X%08X\n",

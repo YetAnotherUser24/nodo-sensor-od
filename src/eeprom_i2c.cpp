@@ -8,6 +8,7 @@
 
 #include "eeprom_i2c.h"
 #include <Wire.h>
+#include "n_logger_config.h"
 #include "utilities.h"
 
 #ifndef EEPROM_HEADER_SIZE
@@ -34,15 +35,15 @@ void i2c_eeprom_write_page(int deviceaddress,
                            byte* data,
                            byte length)
 {
-  Wire.beginTransmission(deviceaddress);
-  Wire.write((int)(eeaddresspage >> 8));      // MSB of address
-  Wire.write((int)(eeaddresspage & 0xFF));    // LSB of address
+  EEPROM_WIRE.beginTransmission(deviceaddress);
+  EEPROM_WIRE.write((int)(eeaddresspage >> 8));      // MSB of address
+  EEPROM_WIRE.write((int)(eeaddresspage & 0xFF));    // LSB of address
 
   for (byte c = 0; c < length; c++) {
-    Wire.write(data[c]);
+    EEPROM_WIRE.write(data[c]);
   }
 
-  Wire.endTransmission();
+  EEPROM_WIRE.endTransmission();
   delay(5);   // EEPROM write cycle time
 }
 
@@ -57,14 +58,14 @@ byte i2c_eeprom_read_byte(int deviceaddress, uint16_t eeaddress)
 {
   byte rdata = 0xFF;
 
-  Wire.beginTransmission(deviceaddress);
-  Wire.write((int)(eeaddress >> 8));   // MSB
-  Wire.write((int)(eeaddress & 0xFF)); // LSB
-  Wire.endTransmission();
+  EEPROM_WIRE.beginTransmission(deviceaddress);
+  EEPROM_WIRE.write((int)(eeaddress >> 8));   // MSB
+  EEPROM_WIRE.write((int)(eeaddress & 0xFF)); // LSB
+  EEPROM_WIRE.endTransmission();
 
-  Wire.requestFrom(deviceaddress, 1);
-  if (Wire.available()) {
-    rdata = Wire.read();
+  EEPROM_WIRE.requestFrom(deviceaddress, 1);
+  if (EEPROM_WIRE.available()) {
+    rdata = EEPROM_WIRE.read();
   }
 
   return rdata;
@@ -79,11 +80,11 @@ byte i2c_eeprom_read_byte(int deviceaddress, uint16_t eeaddress)
  */
 void i2c_eeprom_write_byte(int deviceaddress, uint16_t eeaddress, byte data)
 {
-  Wire.beginTransmission(deviceaddress);
-  Wire.write(eeaddress >> 8);        // MSB
-  Wire.write(eeaddress & 0xFF);      // LSB
-  Wire.write((int)data);
-  Wire.endTransmission();
+  EEPROM_WIRE.beginTransmission(deviceaddress);
+  EEPROM_WIRE.write(eeaddress >> 8);        // MSB
+  EEPROM_WIRE.write(eeaddress & 0xFF);      // LSB
+  EEPROM_WIRE.write((int)data);
+  EEPROM_WIRE.endTransmission();
   delay(5);
 }
 
@@ -117,15 +118,15 @@ void i2c_eeprom_read_buffer(int deviceaddress,
                             byte *buffer,
                             int length)
 {
-  Wire.beginTransmission(deviceaddress);
-  Wire.write((int)(eeaddress >> 8));   // MSB
-  Wire.write((int)(eeaddress & 0xFF)); // LSB
-  Wire.endTransmission();
+  EEPROM_WIRE.beginTransmission(deviceaddress);
+  EEPROM_WIRE.write((int)(eeaddress >> 8));   // MSB
+  EEPROM_WIRE.write((int)(eeaddress & 0xFF)); // LSB
+  EEPROM_WIRE.endTransmission();
 
-  Wire.requestFrom(deviceaddress, length);
+  EEPROM_WIRE.requestFrom(deviceaddress, length);
   for (int c = 0; c < length; c++) {
-    if (Wire.available()) {
-      buffer[c] = Wire.read();
+    if (EEPROM_WIRE.available()) {
+      buffer[c] = EEPROM_WIRE.read();
     }
   }
 }

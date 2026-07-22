@@ -106,10 +106,10 @@
 // --- MaxBotix MB12xx ultrasonic sensor over UART ---
 #ifdef SENSOR_MAXBOTIX_UART
   #ifndef MAXBOTIX_RX_PIN
-  #define MAXBOTIX_RX_PIN 23
+  #define MAXBOTIX_RX_PIN 34  
   #endif
   #ifndef MAXBOTIX_TX_PIN
-  #define MAXBOTIX_TX_PIN 19
+  #define MAXBOTIX_TX_PIN 32
   #endif
   #ifndef MAXBOTIX_PWR_PIN
   #define MAXBOTIX_PWR_PIN 18
@@ -118,10 +118,10 @@
   #define MAXBOTIX_NUM_READINGS 5
   #endif
   #ifndef MAXBOTIX_WARMUP_MS
-  #define MAXBOTIX_WARMUP_MS 175
+  #define MAXBOTIX_WARMUP_MS 2500                                                                                                                                                                                         
   #endif
   #ifndef MAXBOTIX_SAMPLE_TIMEOUT_MS
-  #define MAXBOTIX_SAMPLE_TIMEOUT_MS 500
+  #define MAXBOTIX_SAMPLE_TIMEOUT_MS 1000
   #endif
   #define SENSOR_NAME "maxbotix-uart"
 #else
@@ -190,13 +190,18 @@
   #define SOIL_DE_RE_PIN 0
   #endif
   #ifndef SOIL_BAUD
-  #define SOIL_BAUD 4800
+  #define SOIL_BAUD 9600
   #endif
   #ifndef SOIL_SLAVE_ID
   #define SOIL_SLAVE_ID 1
   #endif
+  #ifndef SOIL_SAMPLE_COUNT
+  #define SOIL_SAMPLE_COUNT 2
+  #endif
   #ifndef SOIL_NUM_READINGS
-  #define SOIL_NUM_READINGS 2
+  // Each sample reads 2 registers (moisture + temperature), so total
+  // readings = sample_count * 2.
+  #define SOIL_NUM_READINGS (SOIL_SAMPLE_COUNT * SOIL_MODBUS_READ_COUNT)
   #endif
   #ifndef SOIL_MODBUS_READ_COUNT
   #define SOIL_MODBUS_READ_COUNT 2
@@ -205,7 +210,13 @@
   #define SOIL_MODBUS_START_ADDR 0x0000
   #endif
   #ifndef SOIL_WARMUP_MS
-  #define SOIL_WARMUP_MS 200
+  #define SOIL_WARMUP_MS 500
+  #endif
+  #ifndef SOIL_EN_PIN
+  #define SOIL_EN_PIN -1
+  #endif
+  #ifndef SOIL_EN_ACTIVE_HIGH
+  #define SOIL_EN_ACTIVE_HIGH true
   #endif
   #define SENSOR_NAME "soil-3probe"
 #else
@@ -249,6 +260,12 @@
   #ifndef SOIL5_NUM_READINGS
   #define SOIL5_NUM_READINGS (SOIL5_SAMPLE_COUNT * SOIL5_MODBUS_READ_COUNT)
   #endif
+  #ifndef SOIL5_EN_PIN
+  #define SOIL5_EN_PIN -1
+  #endif
+  #ifndef SOIL5_EN_ACTIVE_HIGH
+  #define SOIL5_EN_ACTIVE_HIGH true
+  #endif
   #define SENSOR_NAME "soil-5probe"
 #else
   #define SOIL5_NUM_READINGS 0
@@ -265,7 +282,29 @@
   #ifndef BATTERY_ADC_MULTIPLIER
   #define BATTERY_ADC_MULTIPLIER 2
   #endif
+  #undef SENSOR_NAME
   #define SENSOR_NAME "battery-adc"
+  // Note: SENSOR_BATTERY_ADC is a secondary sensor and does NOT set SENSOR_NAME.
+  // If another primary sensor (e.g. SENSOR_SOIL_3TIP, SENSOR_RADAR, etc.) is enabled,
+  // its SENSOR_NAME definition takes precedence due to include order.
+  #ifdef SENSOR_SOIL_3TIP
+  #undef SENSOR_NAME
+  #define SENSOR_NAME "soil-3probe"
+  #elif defined(SENSOR_RADAR)
+  #undef SENSOR_NAME
+  #define SENSOR_NAME "radar"
+  #elif defined(SENSOR_MAXBOTIX_UART)
+  #undef SENSOR_NAME
+  #define SENSOR_NAME "maxbotix-uart"
+  #elif defined(SENSOR_WATER_TEMP)
+  #undef SENSOR_NAME
+  #define SENSOR_NAME "water-temp"
+  #elif defined(SENSOR_SOIL_5TIP)
+  #undef SENSOR_NAME
+  #define SENSOR_NAME "soil-5probe"
+  #else
+  #define SENSOR_NAME "battery-adc"
+  #endif
 #else
   #define BATTERY_NUM_READINGS 0
 #endif
@@ -340,6 +379,49 @@ struct TelemetryPayload {
 
 #ifndef MAX_FAILED_TRANSMISSIONS
 #define MAX_FAILED_TRANSMISSIONS 3
+#endif
+
+/* --------------------------------------------------------------------------
+ *  I2C Pin Defaults (overridable per build)
+ *  Set to -1 to use Wire.begin() defaults (SDA=21, SCL=22 on ESP32).
+ * -------------------------------------------------------------------------- */
+
+#ifndef I2C_SDA_PIN
+#define I2C_SDA_PIN -1
+#endif
+
+#ifndef I2C_SCL_PIN
+#define I2C_SCL_PIN -1
+#endif
+
+/* --------------------------------------------------------------------------
+ *  EEPROM I2C Bus Selection
+ *
+ *  By default, the external I2C EEPROM shares the main Wire bus (SDA=21/SCL=22).
+ *  Some hardware revisions (e.g. LILYGO T-A7670 GPRS boards) have the EEPROM's
+ *  SDA/SCL traces swapped on the PCB. For those boards, define:
+ *
+ *      -DI2C_EEPROM_SDA_PIN=22
+ *      -DI2C_EEPROM_SCL_PIN=21
+ *
+ *  When both pins are set to valid GPIO numbers (not -1), a second I2C bus
+ *  (Wire1) is activated for the EEPROM with the specified (reversed) pin mapping.
+ *  The main Wire bus remains unchanged for the RTC and any other I2C peripherals.
+ * -------------------------------------------------------------------------- */
+
+#ifndef I2C_EEPROM_SDA_PIN
+#define I2C_EEPROM_SDA_PIN -1
+#endif
+
+#ifndef I2C_EEPROM_SCL_PIN
+#define I2C_EEPROM_SCL_PIN -1
+#endif
+
+#if I2C_EEPROM_SDA_PIN != -1 && I2C_EEPROM_SCL_PIN != -1
+  #define EEPROM_USE_WIRE1
+  #define EEPROM_WIRE Wire1
+#else
+  #define EEPROM_WIRE Wire
 #endif
 
 /* --------------------------------------------------------------------------

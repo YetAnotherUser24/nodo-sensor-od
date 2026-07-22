@@ -15,6 +15,7 @@
 #include <WiFi.h>
 #include <esp_bt.h>
 #include <esp_sleep.h>
+#include <driver/gpio.h>
 #include <SPI.h>
 
 #include "n_logger_config.h"
@@ -100,6 +101,47 @@ void prepareForDeepSleep(int minutes) {
   sdBusSuspend();
 
   digitalWrite(LED_PIN, LOW);
+
+  // Lock sensor power/control pins LOW through deep sleep.
+  // ESP32 retains OUTPUT state during deep sleep — setting pins to
+  // OUTPUT + LOW is sufficient for most scenarios.  For pins that
+  // need extra protection against leakage we additionally enable
+  // the GPIO hold function via gpio_hold_en (works on all GPIOs,
+  // not just RTC-capable ones).
+  #ifdef SENSOR_SOIL_3TIP
+  pinMode(SOIL_PWR_PIN, OUTPUT);
+  digitalWrite(SOIL_PWR_PIN, LOW);
+  gpio_hold_en((gpio_num_t)SOIL_PWR_PIN);
+  pinMode(SOIL_DE_RE_PIN, OUTPUT);
+  digitalWrite(SOIL_DE_RE_PIN, LOW);
+  gpio_hold_en((gpio_num_t)SOIL_DE_RE_PIN);
+  pinMode(SOIL_RX_PIN, INPUT);
+  pinMode(SOIL_TX_PIN, INPUT);
+  #endif
+  #ifdef SENSOR_RADAR
+  pinMode(RADAR_PWR_PIN, OUTPUT);
+  digitalWrite(RADAR_PWR_PIN, LOW);
+  gpio_hold_en((gpio_num_t)RADAR_PWR_PIN);
+  pinMode(RADAR_RX_PIN, INPUT);
+  pinMode(RADAR_TX_PIN, INPUT);
+  #endif
+  #ifdef SENSOR_SOIL_5TIP
+  pinMode(SOIL5_PWR_PIN, OUTPUT);
+  digitalWrite(SOIL5_PWR_PIN, LOW);
+  gpio_hold_en((gpio_num_t)SOIL5_PWR_PIN);
+  pinMode(SOIL5_DE_RE_PIN, OUTPUT);
+  digitalWrite(SOIL5_DE_RE_PIN, LOW);
+  gpio_hold_en((gpio_num_t)SOIL5_DE_RE_PIN);
+  pinMode(SOIL5_RX_PIN, INPUT);
+  pinMode(SOIL5_TX_PIN, INPUT);
+  #endif
+  #ifdef SENSOR_MAXBOTIX_UART
+  pinMode(MAXBOTIX_PWR_PIN, OUTPUT);
+  digitalWrite(MAXBOTIX_PWR_PIN, LOW);
+  gpio_hold_en((gpio_num_t)MAXBOTIX_PWR_PIN);
+  pinMode(MAXBOTIX_RX_PIN, INPUT);
+  pinMode(MAXBOTIX_TX_PIN, INPUT);
+  #endif
 
 #ifdef DEBUG
   Logln("");

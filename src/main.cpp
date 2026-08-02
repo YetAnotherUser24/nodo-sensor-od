@@ -64,10 +64,6 @@
 /* --------------------------- BLE Status ---------------------------- */
 
 bool bleDeviceConnected = false;
-unsigned long lastBleLedMillis = 0;
-bool bleLedState = false;
-
-const unsigned long BLE_WAIT_BLINK = 1000;
 
 uint64_t device_ID = ESP.getEfuseMac();
 
@@ -180,37 +176,6 @@ BLECharacteristic* pCharacteristic = nullptr;
 
 #define countof(a) (sizeof(a) / sizeof(a[0]))
 
-/* ------------------------ BLE LED Pattern -------------------------- */
-
-/**
- * @brief Controls LED indication according to BLE activity:
- *        - OFF when BLE inactive
- *        - ON solid when BLE active and connected
- *        - Blinking while BLE active and not connected.
- */
-void handleBleLedPattern() {
-  unsigned long now = millis();
-
-  // BLE off → LED OFF
-  if (!bleActive) {
-    digitalWrite(LED_PIN, LOW);
-    return;
-  }
-
-  // BLE active but not connected → BLINK
-  if (!bleDeviceConnected) {
-    if (now - lastBleLedMillis >= BLE_WAIT_BLINK) {
-      bleLedState = !bleLedState;
-      digitalWrite(LED_PIN, bleLedState);
-      lastBleLedMillis = now;
-    }
-    return;
-  }
-
-  // BLE connected → LED ON solid
-  digitalWrite(LED_PIN, HIGH);
-}
-
 /* ============================== Setup ============================== */
 
 /**
@@ -319,6 +284,7 @@ void setup() {
 #ifdef DEBUG
       Logln("TRY TO CONNECT TO BLUETOOTH");
 #endif
+      digitalWrite(LED_PIN, LOW);
       startBLE();
     }
 
@@ -464,9 +430,6 @@ void setup() {
  * @brief Main loop: manages BLE active window and deep sleep transitions.
  */
 void loop() {
-
-  handleBleLedPattern();
-
   if (bleActive) {
     if (millis() - bleStartTime > BLE_ACTIVE_TIME) {
       Logln(" BLE time expired, entering sleep...");
@@ -474,7 +437,6 @@ void loop() {
       prepareForDeepSleep(moduleCfg.measure_time);
     }
   } else {
-    digitalWrite(LED_PIN, LOW);
     prepareForDeepSleep(moduleCfg.measure_time);
   }
 

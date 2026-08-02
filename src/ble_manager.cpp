@@ -22,6 +22,7 @@
 
 #include "n_logger_config.h"
 #include "config.h"
+#include "error_sensor.h"
 #include "utilities.h"
 
 /* ------------------------ External Dependencies ------------------------ */
@@ -73,11 +74,13 @@ class ServerConnectionCallbacks : public BLEServerCallbacks {
   void onConnect(BLEServer* server) override {
     Logln("BLE: Device connected");
     bleDeviceConnected = true;
+    digitalWrite(LED_PIN, HIGH);
   }
 
   void onDisconnect(BLEServer* server) override {
     Logln("BLE: Device disconnected");
     bleDeviceConnected = false;
+    digitalWrite(LED_PIN, LOW);
     server->startAdvertising();
   }
 };
@@ -114,6 +117,24 @@ void startBLE() {
   bleStartTime = millis();
 
   Logln("BLE active and advertising");
+
+  if (!bleDeviceConnected) {
+    for (int i = 0; i < 10 && !bleDeviceConnected; i++) {
+      digitalWrite(LED_PIN, HIGH);
+      delay(100);
+
+      if (bleDeviceConnected) {
+        break;
+      }
+
+      digitalWrite(LED_PIN, LOW);
+      delay(100);
+    }
+
+    if (bleDeviceConnected) {
+      digitalWrite(LED_PIN, HIGH);
+    }
+  }
 }
 
 /**

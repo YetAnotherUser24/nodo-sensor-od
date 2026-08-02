@@ -73,8 +73,6 @@ extern char               dateStr[20];
 extern PubSubClient mqtt;
 #endif
 
-// External helpers
-extern void     error(int errorNum, int errpin);
 extern bool     mqttAvailable;
 
 /* --------------------------------------------------------------------------
@@ -282,6 +280,8 @@ void takeMeasurement() {
 
   if (eepromWritePage > (EEPROM_MAX_PAGES - EEPROM_HEADER_SIZE))
     eepromWritePage = 0;
+
+  error(1, LED_PIN);
 }
 
 /* --------------------------------------------------------------------------
@@ -441,9 +441,8 @@ uint8_t dumpEEPROM() {
   uint16_t i = 0, j = 0;
   bool keep = true;
   bool failure = false;
+  bool wroteAny = false;
   const uint16_t headerBytes = EEPROM_HEADER_SIZE * EEPROM_PAGE_SIZE;
-
-  digitalWrite(LED_PIN, HIGH);
 
 #ifdef DEBUG
   Serial.println(F("[dumpEEPROM] start"));
@@ -457,7 +456,6 @@ uint8_t dumpEEPROM() {
     telemetryPayload.status =
       changeBit(telemetryPayload.status, STATUS_SD_CARD_BIT, true);
 
-    digitalWrite(LED_PIN, LOW);
     return 0;
   }
 
@@ -484,6 +482,9 @@ uint8_t dumpEEPROM() {
 #endif
 */
         failure = !writeEEPROMLine(i * 8 + j);
+        if (!failure) {
+          wroteAny = true;
+        }
         if (failure) { keep = false; break; }
       } else {
 #ifdef DEBUG
@@ -503,6 +504,10 @@ uint8_t dumpEEPROM() {
   }
 #endif
 
+  if (!failure && wroteAny) {
+    error(1, LED_PIN);
+  }
+
   if (fileOpen) {
     sdFile.close();
     fileOpen = false;
@@ -512,7 +517,6 @@ uint8_t dumpEEPROM() {
   Serial.println(F("[dumpEEPROM] end"));
 #endif
 
-  digitalWrite(LED_PIN, LOW);
   return failure ? 0 : 1;
 #else
   return 1;
@@ -620,7 +624,6 @@ uint8_t writeEEPROMLine(uint16_t n) {
 #ifdef DEBUG
     Serial.println(F("[writeEEPROMLine] file open failed"));
 #endif
-    error(3, LED_PIN);
     return 0;
   }
 

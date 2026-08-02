@@ -429,7 +429,7 @@ struct TelemetryPayload {
  * -------------------------------------------------------------------------- */
 
 #ifndef LED_PIN
-#define LED_PIN 32
+#define LED_PIN 23
 #endif
 
 #ifndef WAKEUP_PIN

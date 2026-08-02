@@ -62,6 +62,11 @@ static uint8_t  bleLedBlinks      = 0;
 static unsigned long bleLedLastToggle = 0;
 static bool     bleLedState       = false;
 
+/** Guard flag: true while executing inside a BLE callback (onConnect/onDisconnect/onWrite).
+ *  Prevents bleNotifyIfStreaming() from calling BLE APIs (notify) from callback context,
+ *  which would deadlock the BLE task. */
+static volatile bool bleInCallback = false;
+
 void bleProcessLedBlinks() {
   if (bleLedBlinks == 0) return;
   unsigned long now = millis();
@@ -101,6 +106,7 @@ void bleProcessLedBlinks() {
  */
 class MyCallbacks : public BLECharacteristicCallbacks {
   void onWrite(BLECharacteristic* pChar) override {
+    bleInCallback = true;
     std::string val = pChar->getValue();
     if (!val.empty()) {
       const char* cmd = val.c_str();
@@ -109,6 +115,7 @@ class MyCallbacks : public BLECharacteristicCallbacks {
       bleStartTime = millis();
       processCommand(String(cmd));  // one-time String creation, passed by value then consumed
     }
+    bleInCallback = false;
   }
 };
 
@@ -117,14 +124,17 @@ class MyCallbacks : public BLECharacteristicCallbacks {
  */
 class ServerConnectionCallbacks : public BLEServerCallbacks {
   void onConnect(BLEServer* server) override {
+    bleInCallback = true;
     Logln("BLE: Device connected");
     bleDeviceConnected = true;
     bleWasEverConnected = true;
     bleRestartAdvertisingRequested = false;
     digitalWrite(LED_PIN, HIGH);
+    bleInCallback = false;
   }
 
   void onDisconnect(BLEServer* server) override {
+    bleInCallback = true;
     Logln("BLE: Device disconnected");
     bool wasIntentionalStop = !bleRealtimeSendActive;  // STOP was sent before disconnect
     bleDeviceConnected = false;
@@ -136,6 +146,7 @@ class ServerConnectionCallbacks : public BLEServerCallbacks {
     }
     // else: STOP was sent intentionally → keep existing bleStartTime (sleep sooner)
     digitalWrite(LED_PIN, LOW);
+    bleInCallback = false;
   }
 };
 
@@ -350,6 +361,8 @@ void processCommand(const String& cmdIn) {
 
 static void bleNotifyIfStreaming(const char *s) {
 #if !defined(NO_BLE_STREAMING)
+  // Never call BLE APIs from within BLE callbacks — that would deadlock the BLE task
+  if (bleInCallback) return;
   if (bleStreamingActive && bleDeviceConnected && pCharacteristic != nullptr) {
     pCharacteristic->setValue((uint8_t*)s, strlen(s));
     pCharacteristic->notify();
@@ -360,12 +373,17 @@ static void bleNotifyIfStreaming(const char *s) {
 }
 
 void Log(const char *s) {
-  Serial.print(s);
+  // When inside a BLE callback, never block on Serial (TX buffer full => BLE task deadlock)
+  if (!bleInCallback || Serial.availableForWrite() > (int)strlen(s)) {
+    Serial.print(s);
+  }
   bleNotifyIfStreaming(s);
 }
 
 void Logln(const char *s) {
-  Serial.println(s);
+  if (!bleInCallback || Serial.availableForWrite() > (int)(strlen(s) + 2)) {
+    Serial.println(s);
+  }
   bleNotifyIfStreaming(s);
   bleNotifyIfStreaming("\r\n");
 }

@@ -56,6 +56,7 @@ static int16_t maxbotixReadSingle() {
         break;
       }
     }
+    yield();
   }
 
   if (!foundR) {
@@ -76,6 +77,7 @@ static int16_t maxbotixReadSingle() {
         break;
       }
     }
+    yield();
   }
 
   if (index > 0) {
@@ -802,10 +804,10 @@ int16_t readPrimarySensorRealtime() {
     gpio_hold_dis((gpio_num_t)RADAR_PWR_PIN);
     digitalWrite(RADAR_PWR_PIN, HIGH);
     delay(RADAR_WARMUP_MS);
-    radarSerial.begin(RADAR_BAUDRATE, SERIAL_8N1, RADAR_RX_PIN, RADAR_TX_PIN);
+    radarSerial.begin(RADAR_BAUD, SERIAL_8N1, RADAR_RX_PIN, RADAR_TX_PIN);
     realtimeSensorInit = true;
   }
-  val = radarReadDistance();
+  val = radarReadSingle();
 #endif
 
   return val;
@@ -816,11 +818,11 @@ void stopPrimarySensorRealtime() {
 
 #ifdef SENSOR_MAXBOTIX_UART
   maxbotixSerial.end();
-  digitalWrite(MAXBOTIX_PWR_PIN, LOW);
+  //digitalWrite(MAXBOTIX_PWR_PIN, LOW);
 #elif defined(SENSOR_RADAR)
   radarSerial.end();
-  digitalWrite(RADAR_PWR_PIN, LOW);
+  //digitalWrite(RADAR_PWR_PIN, LOW);
 #endif
 
   realtimeSensorInit = false;
-}
+}

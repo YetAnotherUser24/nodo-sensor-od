@@ -211,9 +211,22 @@ void setup() {
 
   Wire.begin(I2C_SDA_PIN, I2C_SCL_PIN);
 
+#ifdef DEBUG
+  Logln("Scanning I2C bus...");
+  for (byte address = 1; address < 127; address++) {
+    Wire.beginTransmission(address);
+    if (Wire.endTransmission() == 0) {
+      Log("Found I2C device at 0x");
+      if (address < 16) Log("0");
+      Logln(String(address, HEX).c_str());
+    }
+  }
+#endif
+
 #ifdef EEPROM_USE_WIRE1
   Wire1.begin(I2C_EEPROM_SDA_PIN, I2C_EEPROM_SCL_PIN);
 #endif
+
 
   // Load config from EEPROM
   EEPROM.begin(sizeof(ModuleConfig));
@@ -457,6 +470,7 @@ void setup() {
  */
 void loop() {
   esp_task_wdt_reset();
+  bleProcessLedBlinks();
 
   if (bleRestartAdvertisingRequested && bleActive && pServer != nullptr) {
     bleRestartAdvertisingRequested = false;
@@ -466,33 +480,46 @@ void loop() {
 
   if (bleActive) {
     static unsigned long lastBleReport = 0;
+    static bool wasStreaming = false;
     if (!bleDeviceConnected && (millis() - lastBleReport >= 5000)) {
       lastBleReport = millis();
       unsigned long elapsed = millis() - bleStartTime;
       if (elapsed < BLE_ACTIVE_TIME) {
         unsigned long remainingSec = (BLE_ACTIVE_TIME - elapsed) / 1000;
-        Logf("[BLE] Waiting for connection... %lu s remaining before sleep\n", remainingSec);
+        const char* mode = bleWasEverConnected ? "Reconnection window" : "Waiting for connection";
+        Logf("[BLE] %s... %lu s remaining before sleep\n", mode, remainingSec);
       }
     }
 
     /* Real-time sensor preview stream ("SEND" command) */
-    if (bleRealtimeSendActive && bleDeviceConnected) {
+    if (bleRealtimeSendActive && bleDeviceConnected && pServer != nullptr) {
       static unsigned long lastRealtimeSample = 0;
-      if (millis() - lastRealtimeSample >= 1000) {
+      // Only read sensor and notify when client has subscribed to notifications
+      if (isBleNotifyEnabled() && millis() - lastRealtimeSample >= 1000) {
         lastRealtimeSample = millis();
         int16_t dist = readPrimarySensorRealtime();
-        if (dist > 0 && pNotifyCharacteristic != nullptr) {
-          String distStr = String(dist);
-          pNotifyCharacteristic->setValue(distStr.c_str());
+        if (dist > 0 && isBleNotifyEnabled()) {
+          static char distBuf[8];
+          itoa(dist, distBuf, 10);
+          pNotifyCharacteristic->setValue((const char*)distBuf);
           pNotifyCharacteristic->notify();
+          delay(10); // ponytail: yield briefly to let BLE BTC task flush GATT packet safely
 #ifdef DEBUG
-          Logf("[BLE][REALTIME] Sent: %s mm\n", distStr.c_str());
+          Logf("[BLE][REALTIME] Sent: %s mm\n", distBuf);
 #endif
         }
         bleStartTime = millis(); // Refresh BLE active window while real-time streaming
       }
+      wasStreaming = true;
     } else {
-      stopPrimarySensorRealtime();
+      // Only kill streaming on actual disconnect, not on missing notification subscription
+      if (!bleDeviceConnected) {
+        bleRealtimeSendActive = false;
+      }
+      if (wasStreaming) {
+        stopPrimarySensorRealtime();
+        wasStreaming = false;
+      }
     }
 
     // If streaming was enabled but client stays disconnected past active window, disable streaming mode
@@ -514,4 +541,4 @@ void loop() {
   delay(50);
 }
 
-
+

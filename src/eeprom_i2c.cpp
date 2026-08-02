@@ -10,6 +10,7 @@
 #include <Wire.h>
 #include "n_logger_config.h"
 #include "utilities.h"
+#include "log.h"
 
 #ifndef EEPROM_HEADER_SIZE
   #define EEPROM_HEADER_SIZE 8
@@ -43,7 +44,12 @@ void i2c_eeprom_write_page(int deviceaddress,
     EEPROM_WIRE.write(data[c]);
   }
 
-  EEPROM_WIRE.endTransmission();
+  uint8_t err = EEPROM_WIRE.endTransmission();
+#ifdef DEBUG
+  if (err != 0) {
+    Logf("[EEPROM][ERR] write_page addr 0x%04X failed: error %d\n", eeaddresspage, err);
+  }
+#endif
   delay(5);   // EEPROM write cycle time
 }
 
@@ -56,13 +62,17 @@ void i2c_eeprom_write_page(int deviceaddress,
  */
 byte i2c_eeprom_read_byte(int deviceaddress, uint16_t eeaddress)
 {
-  byte rdata = 0xFF;
+  byte rdata = 0x00;
 
   EEPROM_WIRE.beginTransmission(deviceaddress);
   EEPROM_WIRE.write((int)(eeaddress >> 8));   // MSB
   EEPROM_WIRE.write((int)(eeaddress & 0xFF)); // LSB
-  if (EEPROM_WIRE.endTransmission() != 0) {
-    return rdata; // Device NACK - abort to avoid jamming Wire bus
+  uint8_t err = EEPROM_WIRE.endTransmission();
+  if (err != 0) {
+#ifdef DEBUG
+    Logf("[EEPROM][ERR] read_byte addr 0x%04X NACK: error %d\n", eeaddress, err);
+#endif
+    return rdata; // Device NACK
   }
 
   if (EEPROM_WIRE.requestFrom(deviceaddress, 1) > 0) {
@@ -87,17 +97,17 @@ void i2c_eeprom_write_byte(int deviceaddress, uint16_t eeaddress, byte data)
   EEPROM_WIRE.write(eeaddress >> 8);        // MSB
   EEPROM_WIRE.write(eeaddress & 0xFF);      // LSB
   EEPROM_WIRE.write((int)data);
-  EEPROM_WIRE.endTransmission();
+  uint8_t err = EEPROM_WIRE.endTransmission();
+#ifdef DEBUG
+  if (err != 0) {
+    Logf("[EEPROM][ERR] write_byte addr 0x%04X failed: error %d\n", eeaddress, err);
+  }
+#endif
   delay(5);
 }
 
 /**
  * @brief Resets the EEPROM header region.
- *
- * Writes 0x00 over the number of bytes defined by:
- * (EEPROM_HEADER_SIZE * EEPROM_PAGE_SIZE)
- *
- * @param deviceaddress I2C device address.
  */
 void resetEEPromHeader(int deviceaddress)
 {
@@ -124,9 +134,13 @@ void i2c_eeprom_read_buffer(int deviceaddress,
   EEPROM_WIRE.beginTransmission(deviceaddress);
   EEPROM_WIRE.write((int)(eeaddress >> 8));   // MSB
   EEPROM_WIRE.write((int)(eeaddress & 0xFF)); // LSB
-  if (EEPROM_WIRE.endTransmission() != 0) {
+  uint8_t err = EEPROM_WIRE.endTransmission();
+  if (err != 0) {
+#ifdef DEBUG
+    Logf("[EEPROM][ERR] read_buffer addr 0x%04X NACK: error %d\n", eeaddress, err);
+#endif
     memset(buffer, 0, length);
-    return; // Device NACK - abort requestFrom to avoid jamming Wire bus
+    return;
   }
 
   if (EEPROM_WIRE.requestFrom(deviceaddress, length) > 0) {
@@ -136,6 +150,10 @@ void i2c_eeprom_read_buffer(int deviceaddress,
       }
     }
   } else {
+#ifdef DEBUG
+    Logf("[EEPROM][ERR] read_buffer addr 0x%04X requestFrom failed\n", eeaddress);
+#endif
     memset(buffer, 0, length);
   }
 }
+

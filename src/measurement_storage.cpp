@@ -452,10 +452,24 @@ uint8_t dumpEEPROM() {
   bool wroteAny = false;
   const uint16_t headerBytes = EEPROM_HEADER_SIZE * EEPROM_PAGE_SIZE;
 
+  // Power ON sensor / I2C bus VCC pin before communicating with EEPROM
+#if defined(MAXBOTIX_PWR_PIN) && MAXBOTIX_PWR_PIN != -1
+  pinMode(MAXBOTIX_PWR_PIN, OUTPUT);
+  gpio_hold_dis((gpio_num_t)MAXBOTIX_PWR_PIN);
+  digitalWrite(MAXBOTIX_PWR_PIN, HIGH);
+  delay(20);
+#elif defined(WATER_TEMP_PWR_PIN) && WATER_TEMP_PWR_PIN != -1
+  pinMode(WATER_TEMP_PWR_PIN, OUTPUT);
+  gpio_hold_dis((gpio_num_t)WATER_TEMP_PWR_PIN);
+  digitalWrite(WATER_TEMP_PWR_PIN, HIGH);
+  delay(20);
+#endif
+
 #ifdef DEBUG
   Serial.println(F("[dumpEEPROM] start"));
   Serial.println(F("[dumpEEPROM] SD.begin()..."));
 #endif
+
 
   if (!SD.begin(SdSpiConfig(SD_PIN_CS, SHARED_SPI, SD_SCK_MHZ(20), &sdSPI))) {
 #ifdef DEBUG
@@ -473,27 +487,22 @@ uint8_t dumpEEPROM() {
 
   while (keep && i < headerBytes) {
     byte headerByte = i2c_eeprom_read_byte(EEPROM_ADDRESS, i);
-/*
-#ifdef DEBUG
-    Serial.print(F("[dumpEEPROM] header["));
-    Serial.print(i);
-    Serial.print(F("] = 0x"));
-    Serial.println(headerByte, HEX);
-#endif
-*/
+
     for (j = 0; j < 8; j++) {
       if ((headerByte >> j) & 1) {
-/*        
-#ifdef DEBUG
-        Serial.print(F("[dumpEEPROM] writing page "));
-        Serial.println(i * 8 + j);
-#endif
-*/
-        failure = !writeEEPROMLine(i * 8 + j);
-        if (!failure) {
+        uint8_t res = writeEEPROMLine(i * 8 + j);
+        if (res == 1) {
           wroteAny = true;
+        } else if (res == 2) {
+          // Reached end of valid EEPROM data (empty page/zero timestamp) -> stop dump cleanly
+          keep = false;
+          break;
+        } else {
+          // res == 0: SD card file open or write error
+          failure = true;
+          keep = false;
+          break;
         }
-        if (failure) { keep = false; break; }
       } else {
 #ifdef DEBUG
         Serial.println(F("[dumpEEPROM] no more pending pages"));
@@ -505,6 +514,8 @@ uint8_t dumpEEPROM() {
 
     i++;
   }
+
+
 
 #ifdef DEBUG
   if (keep && i >= headerBytes) {
@@ -589,8 +600,9 @@ uint8_t writeEEPROMLine(uint16_t n) {
     Serial.print(seconds2000);
     Serial.println(F(" -> stop dump"));
 #endif
-    return 0;
+    return 2; // 2 = end of valid EEPROM records (not a failure)
   }
+
 
   ts = RtcDateTime(seconds2000);
 

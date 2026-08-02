@@ -53,6 +53,46 @@ RTC_DATA_ATTR bool bleStreamingActive = false;
 bool bleRealtimeSendActive = false;
 bool bleRestartAdvertisingRequested = false;
 
+/** Tracks whether a BLE client has ever connected (for better log messages). */
+bool bleWasEverConnected = false;
+
+/* --------------------- LED Blink State Machine ------------------------ */
+
+static uint8_t  bleLedBlinks      = 0;
+static unsigned long bleLedLastToggle = 0;
+static bool     bleLedState       = false;
+
+void bleProcessLedBlinks() {
+  if (bleLedBlinks == 0) return;
+  unsigned long now = millis();
+
+  // First call: turn LED ON and start the 200ms timer
+  if (bleLedLastToggle == 0) {
+    bleLedLastToggle = now;
+    bleLedState = true;
+    digitalWrite(LED_PIN, LOW);  // LED ON (active-low)
+    return;
+  }
+
+  if (now - bleLedLastToggle >= 200) {
+    bleLedLastToggle = now;
+    if (bleLedState) {
+      // Was ON → turn OFF
+      digitalWrite(LED_PIN, HIGH);
+      bleLedState = false;
+    } else {
+      // Was OFF → turn ON, decrement blink count
+      bleLedBlinks--;
+      if (bleLedBlinks == 0) {
+        digitalWrite(LED_PIN, HIGH);  // ensure LED ends OFF
+        bleLedLastToggle = 0;         // reset for next command
+        return;
+      }
+      digitalWrite(LED_PIN, LOW);
+      bleLedState = true;
+    }
+  }
+}
 
 /* ---------------------------- BLE Callbacks ---------------------------- */
 
@@ -61,12 +101,13 @@ bool bleRestartAdvertisingRequested = false;
  */
 class MyCallbacks : public BLECharacteristicCallbacks {
   void onWrite(BLECharacteristic* pChar) override {
-    String rxValue = pChar->getValue().c_str();
-    if (rxValue.length() > 0) {
+    std::string val = pChar->getValue();
+    if (!val.empty()) {
+      const char* cmd = val.c_str();
       Log("Command received: ");
-      Logln(rxValue.c_str());
+      Logln(cmd);
       bleStartTime = millis();
-      processCommand(rxValue);
+      processCommand(String(cmd));  // one-time String creation, passed by value then consumed
     }
   }
 };
@@ -78,16 +119,22 @@ class ServerConnectionCallbacks : public BLEServerCallbacks {
   void onConnect(BLEServer* server) override {
     Logln("BLE: Device connected");
     bleDeviceConnected = true;
+    bleWasEverConnected = true;
     bleRestartAdvertisingRequested = false;
     digitalWrite(LED_PIN, HIGH);
   }
 
   void onDisconnect(BLEServer* server) override {
     Logln("BLE: Device disconnected");
+    bool wasIntentionalStop = !bleRealtimeSendActive;  // STOP was sent before disconnect
     bleDeviceConnected = false;
     bleRealtimeSendActive = false;
     bleRestartAdvertisingRequested = true;
-    bleStartTime = millis();
+    if (!wasIntentionalStop) {
+      // Unexpected disconnect during streaming → give full reconnection window
+      bleStartTime = millis();
+    }
+    // else: STOP was sent intentionally → keep existing bleStartTime (sleep sooner)
     digitalWrite(LED_PIN, LOW);
   }
 };
@@ -157,6 +204,20 @@ void startBLE() {
   }
 }
 
+bool isBleNotifyEnabled() {
+  if (!bleActive || !bleDeviceConnected || pServer == nullptr || pNotifyCharacteristic == nullptr) {
+    return false;
+  }
+  if (pServer->getConnectedCount() == 0) {
+    return false;
+  }
+  BLE2902* p2902 = (BLE2902*) pNotifyCharacteristic->getDescriptorByUUID(BLEUUID((uint16_t)0x2902));
+  if (p2902 != nullptr && !p2902->getNotifications()) {
+    return false;
+  }
+  return true;
+}
+
 /**
  * @brief Safely stops BLE advertising and clears BLE state flags without crashing.
  */
@@ -176,6 +237,7 @@ void stopBLE() {
   bleDeviceConnected = false;
   bleRealtimeSendActive = false;
   bleRestartAdvertisingRequested = false;
+  bleWasEverConnected = false;
 }
 
 /* --------------------------- Command Handling -------------------------- */
@@ -192,23 +254,23 @@ void stopBLE() {
  *
  * LED blink is used for simple acknowledgement.
  */
-void processCommand(String cmd) {
+void processCommand(const String& cmdIn) {
+  // Work on a mutable uppercase copy (single allocation)
+  String cmd = cmdIn;
   cmd.trim();
   cmd.toUpperCase();
+  const char* c = cmd.c_str();
+  int len = cmd.length();
 
   /* ---------------------- T-A-B-C : Timing Config ---------------------- */
-  if (cmd.length() > 2 && cmd[0] == 'T' && cmd[1] == '-') {
-    int i1 = cmd.indexOf('-', 2);
-    int i2 = cmd.indexOf('-', i1 + 1);
-    if (i1 != -1 && i2 != -1) {
-
-      String v1 = cmd.substring(2, i1);
-      String v2 = cmd.substring(i1 + 1, i2);
-      String v3 = cmd.substring(i2 + 1);
-
-      moduleCfg.measure_time   = v1.toInt();
-      moduleCfg.bluetooth_time = v2.toInt();
-      moduleCfg.GPRS_time      = v3.toInt();
+  if (len > 2 && c[0] == 'T' && c[1] == '-') {
+    // Parse with pointer arithmetic instead of substring()
+    const char* p1 = strchr(c + 2, '-');
+    const char* p2 = p1 ? strchr(p1 + 1, '-') : nullptr;
+    if (p1 && p2) {
+      moduleCfg.measure_time   = atoi(c + 2);          // c+2 .. p1
+      moduleCfg.bluetooth_time = atoi(p1 + 1);         // p1+1 .. p2
+      moduleCfg.GPRS_time      = atoi(p2 + 1);         // p2+1 .. end
 
       EEPROM.begin(sizeof(ModuleConfig));
       EEPROM.put(0, moduleCfg);
@@ -220,19 +282,19 @@ void processCommand(String cmd) {
       Logf("- bluetooth_time: %d\n", moduleCfg.bluetooth_time);
       Logf("- GPRS_time:      %d\n", moduleCfg.GPRS_time);
 
-      digitalWrite(LED_PIN, LOW);  delay(200);
-      digitalWrite(LED_PIN, HIGH);
+      bleLedBlinks = 1;
     }
   }
 
   /* ----------------------- D-YYYY-MM-DD-HH-MM-SS ----------------------- */
-  else if (cmd.length() > 2 && cmd[0] == 'D' && cmd[1] == '-') {
-    int year   = atoi(cmd.substring(2, 6).c_str());
-    int month  = atoi(cmd.substring(7, 9).c_str());
-    int day    = atoi(cmd.substring(10, 12).c_str());
-    int hour   = atoi(cmd.substring(13, 15).c_str());
-    int minute = atoi(cmd.substring(16, 18).c_str());
-    int second = atoi(cmd.substring(19, 21).c_str());
+  else if (len > 2 && c[0] == 'D' && c[1] == '-') {
+    // Parse with pointer arithmetic: positions 2,7,10,13,16,19 are fixed
+    int year   = atoi(c + 2);
+    int month  = atoi(c + 7);
+    int day    = atoi(c + 10);
+    int hour   = atoi(c + 13);
+    int minute = atoi(c + 16);
+    int second = atoi(c + 19);
 
     RtcDateTime newDT(year, month, day, hour, minute, second);
     rtc.SetDateTime(newDT);
@@ -242,16 +304,14 @@ void processCommand(String cmd) {
     formatDateTime(rtcNow);
     Logln(dateStr);
 
-    digitalWrite(LED_PIN, LOW);  delay(200);
-    digitalWrite(LED_PIN, HIGH);
+    bleLedBlinks = 1;
   }
 
   /* ------------------------------- SEND --------------------------------- */
   else if (cmd == "SEND") {
     bleRealtimeSendActive = true;
     Logln("Real-time sensor stream ENABLED (SEND)");
-    digitalWrite(LED_PIN, LOW);  delay(200);
-    digitalWrite(LED_PIN, HIGH);
+    bleLedBlinks = 1;
   }
 
   /* ------------------------------- STOP --------------------------------- */
@@ -259,15 +319,13 @@ void processCommand(String cmd) {
     bleRealtimeSendActive = false;
     bleStreamingActive = false;
     Logln("Real-time sensor stream DISABLED (STOP)");
-    digitalWrite(LED_PIN, LOW);  delay(200);
-    digitalWrite(LED_PIN, HIGH);
+    bleLedBlinks = 1;
   }
 
   else if (cmd == "START") {
     bleStreamingActive = true;
     Logln("Legacy streaming ENABLED");
-    digitalWrite(LED_PIN, LOW);  delay(200);
-    digitalWrite(LED_PIN, HIGH);
+    bleLedBlinks = 1;
   }
 
   else if (cmd == "C") {
@@ -282,10 +340,7 @@ void processCommand(String cmd) {
 
   /* -------------------------- Unknown command --------------------------- */
   else {
-    for (int i = 0; i < 3; i++) {
-      digitalWrite(LED_PIN, LOW);  delay(100);
-      digitalWrite(LED_PIN, HIGH); delay(100);
-    }
+    bleLedBlinks = 3;
   }
 }
 
@@ -311,8 +366,8 @@ void Log(const char *s) {
 
 void Logln(const char *s) {
   Serial.println(s);
-  String withNl = String(s) + "\r\n";
-  bleNotifyIfStreaming(withNl.c_str());
+  bleNotifyIfStreaming(s);
+  bleNotifyIfStreaming("\r\n");
 }
 
 void Logf(const char *fmt, ...) {

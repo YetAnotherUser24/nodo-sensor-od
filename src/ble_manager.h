@@ -34,6 +34,9 @@ extern bool bleRealtimeSendActive;
 /** Set by BLE disconnect callback when advertising needs to be safely restarted from loop(). */
 extern bool bleRestartAdvertisingRequested;
 
+/** Set to true on first BLE connection; used to differentiate "waiting" vs "reconnection" log messages. */
+extern bool bleWasEverConnected;
+
 
 /**
  * @brief Starts BLE stack, initializes advertising and enables write/notify characteristic.
@@ -41,9 +44,20 @@ extern bool bleRestartAdvertisingRequested;
 void startBLE();
 
 /**
+ * @brief Checks if BLE is connected and notifications are subscribed by client.
+ */
+bool isBleNotifyEnabled();
+
+/**
  * @brief Fully disables BLE stack and stops advertising.
  */
 void stopBLE();
+
+/**
+ * @brief Non-blocking LED blink state machine. Call from loop() to process
+ *        acknowledgement blinks requested by processCommand().
+ */
+void bleProcessLedBlinks();
 
 /**
  * @brief Processes a command received via BLE characteristic.
@@ -56,5 +70,5 @@ void stopBLE();
  *
  * @param cmd Command string received over BLE.
  */
-void processCommand(String cmd);
+void processCommand(const String& cmd);
 

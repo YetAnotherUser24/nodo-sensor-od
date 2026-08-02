@@ -102,21 +102,47 @@ static int16_t maxbotixReadSingle() {
 #endif /* SENSOR_MAXBOTIX_UART */
 
 /* ==================================================================
- *  SENSOR: Water Surface Temperature (I2C)
+ *  SENSOR: Water / IR Surface Temperature (MLX90614ESF-DCI over I2C)
  * ================================================================== */
-#ifdef SENSOR_WATER_TEMP
+#if defined(SENSOR_WATER_TEMP) || defined(SENSOR_MLX90614)
+
+#include <Wire.h>
 
 /**
- * @brief Reads one sample from the water temperature sensor.
- * @return Temperature reading (placeholder returns 0).
+ * @brief Reads a temperature RAM register from MLX90614.
+ * @param reg RAM register address: 0x07 = Object 1 Temp, 0x06 = Ambient Temp.
+ * @return Temperature in decicelsius (0.1°C), or -999 on error.
  */
-static int16_t waterTempReadSingle() {
-  // TODO: implement I2C communication with sensor at WATER_TEMP_ADDR
-  // Wire library already initialized in main.cpp for RTC/EEPROM
-  return 0;
+static int16_t mlx90614ReadTemp(uint8_t reg) {
+  Wire.beginTransmission(WATER_TEMP_ADDR);
+  Wire.write(reg);
+  if (Wire.endTransmission(false) != 0) { // repeated start
+    return -999;
+  }
+
+  if (Wire.requestFrom((uint8_t)WATER_TEMP_ADDR, (uint8_t)3) < 3) {
+    return -999;
+  }
+
+  uint8_t lsb = Wire.read();
+  uint8_t msb = Wire.read();
+  uint8_t pec = Wire.read(); // Packet Error Code
+  (void)pec;
+
+  uint16_t raw = ((uint16_t)msb << 8) | lsb;
+
+  // Check error bit 7 of MSB or 0 raw
+  if (raw == 0 || (msb & 0x80)) {
+    return -999;
+  }
+
+  // Raw resolution: 0.02 K per LSB
+  // Temp in °C x 10 (decicelsius): ((raw * 2) - 27315) / 10
+  int32_t tempDeci = ((int32_t)raw * 2 - 27315) / 10;
+  return (int16_t)tempDeci;
 }
 
-#endif /* SENSOR_WATER_TEMP */
+#endif /* SENSOR_WATER_TEMP || SENSOR_MLX90614 */
 
 /* ==================================================================
  *  SENSOR: Radar distance (Modbus RTU over direct UART)
@@ -514,15 +540,38 @@ void sensorReadAll(TelemetryPayload& tp) {
   }
   #endif /* SENSOR_MAXBOTIX_UART */
 
-  /* ---- Water Temperature ---- */
-  #ifdef SENSOR_WATER_TEMP
+  /* ---- Water / IR Surface Temperature (MLX90614) ---- */
+  #if defined(SENSOR_WATER_TEMP) || defined(SENSOR_MLX90614)
   {
-    // Wire.begin() already called in main setup for RTC/EEPROM
-    for (int i = 0; i < WATER_TEMP_NUM_READINGS; i++) {
-      tp.sensorReadings[readingIndex++] = waterTempReadSingle();
+    #if WATER_TEMP_PWR_PIN != -1
+    pinMode(WATER_TEMP_PWR_PIN, OUTPUT);
+    gpio_hold_dis((gpio_num_t)WATER_TEMP_PWR_PIN);
+    digitalWrite(WATER_TEMP_PWR_PIN, HIGH); // Power ON (GPIO 27 HIGH)
+    delay(WATER_TEMP_WARMUP_MS);
+    #endif
+
+    int16_t objTemp = mlx90614ReadTemp(0x07); // RAM 0x07: Object Temp
+    int16_t ambTemp = mlx90614ReadTemp(0x06); // RAM 0x06: Ambient Temp
+
+    if (objTemp > -900 && ambTemp > -900) {
+#ifdef DEBUG
+      Logf("[MLX90614] Object: %d.%d C, Ambient: %d.%d C\n",
+           objTemp / 10, abs(objTemp % 10),
+           ambTemp / 10, abs(ambTemp % 10));
+#endif
+      tp.sensorReadings[readingIndex++] = objTemp;
+      tp.sensorReadings[readingIndex++] = ambTemp;
+    } else {
+#ifdef DEBUG
+      Logf("[MLX90614] Error reading sensor (obj=%d, amb=%d)\n", objTemp, ambTemp);
+#endif
+      tp.sensorReadings[readingIndex++] = -999;
+      tp.sensorReadings[readingIndex++] = -999;
+      tp.status = changeBit(tp.status, STATUS_WATER_LEVEL_SENSOR_BIT, true);
     }
+
   }
-  #endif /* SENSOR_WATER_TEMP */
+  #endif /* SENSOR_WATER_TEMP || SENSOR_MLX90614 */
 
   /* ---- Radar (Modbus RTU, direct UART) ---- */
   #ifdef SENSOR_RADAR

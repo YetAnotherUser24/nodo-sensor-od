@@ -157,6 +157,13 @@ void prepareForDeepSleep(int minutes) {
   pinMode(MAXBOTIX_RX_PIN, INPUT);
   pinMode(MAXBOTIX_TX_PIN, INPUT);
   #endif
+  #if defined(SENSOR_WATER_TEMP) || defined(SENSOR_MLX90614)
+  #if WATER_TEMP_PWR_PIN != -1
+  pinMode(WATER_TEMP_PWR_PIN, OUTPUT);
+  digitalWrite(WATER_TEMP_PWR_PIN, LOW);
+  gpio_hold_en((gpio_num_t)WATER_TEMP_PWR_PIN);
+  #endif
+  #endif
 
   // Put INA226 into power-down mode before deep sleep
   // (I2C command, no GPIO needed — chip enters low-quiescent-current shutdown)

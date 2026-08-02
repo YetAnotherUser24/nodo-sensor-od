@@ -128,15 +128,21 @@
   #define MAXBOTIX_NUM_READINGS 0
 #endif
 
-// --- Water Surface Temperature sensor (I2C) ---
-#ifdef SENSOR_WATER_TEMP
+// --- Water / IR Surface Temperature sensor (MLX90614ESF-DCI over I2C) ---
+#if defined(SENSOR_WATER_TEMP) || defined(SENSOR_MLX90614)
   #ifndef WATER_TEMP_ADDR
-  #define WATER_TEMP_ADDR 0x44
+  #define WATER_TEMP_ADDR 0x5A
+  #endif
+  #ifndef WATER_TEMP_PWR_PIN
+  #define WATER_TEMP_PWR_PIN 27
   #endif
   #ifndef WATER_TEMP_NUM_READINGS
-  #define WATER_TEMP_NUM_READINGS 3
+  #define WATER_TEMP_NUM_READINGS 2  // 0: Object Temp, 1: Ambient Temp
   #endif
-  #define SENSOR_NAME "water-temp"
+  #ifndef WATER_TEMP_WARMUP_MS
+  #define WATER_TEMP_WARMUP_MS 100
+  #endif
+  #define SENSOR_NAME "mlx90614"
 #else
   #define WATER_TEMP_NUM_READINGS 0
 #endif
@@ -336,9 +342,9 @@
   #elif defined(SENSOR_MAXBOTIX_UART)
   #undef SENSOR_NAME
   #define SENSOR_NAME "maxbotix-uart"
-  #elif defined(SENSOR_WATER_TEMP)
+  #elif defined(SENSOR_WATER_TEMP) || defined(SENSOR_MLX90614)
   #undef SENSOR_NAME
-  #define SENSOR_NAME "water-temp"
+  #define SENSOR_NAME "mlx90614"
   #elif defined(SENSOR_SOIL_5TIP)
   #undef SENSOR_NAME
   #define SENSOR_NAME "soil-5probe"

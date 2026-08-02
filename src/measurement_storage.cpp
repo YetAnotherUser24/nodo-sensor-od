@@ -177,10 +177,18 @@ void takeMeasurement() {
   telemetryPayload.status  = 0x00000000;
 
   rtcNow = rtc.GetDateTime();
+  for (int retry = 0; retry < 3 && rtcNow.Year() < 2020; retry++) {
+    delay(20);
+    rtcNow = rtc.GetDateTime();
+  }
   uint32_t secondsSince2000 = rtcNow.TotalSeconds();
 
   /* Temperature from RTC (always included) */
   int16_t tempCenti = rtc.GetTemperature().AsCentiDegC();
+  if (tempCenti == 0 && rtcNow.Year() >= 2020) {
+    delay(10);
+    tempCenti = rtc.GetTemperature().AsCentiDegC();
+  }
   telemetryPayload.temperature = tempCenti;
 
   if (tempCenti < -4000 || tempCenti > 8500)
@@ -372,8 +380,8 @@ void sendEEPROMToThingsboard() {
       JsonObject vals = doc.createNestedObject("values");
 
 #if defined(SENSOR_BATTERY_ADC) || defined(SENSOR_INA226)
-      // Battery is the last sensor reading if enabled
-      vals["battery"] = readings[MAX_SENSOR_READINGS - 1];
+      // Battery is the last sensor reading if enabled (cast to uint16_t for up to 65535 mV)
+      vals["battery"] = (uint16_t)readings[MAX_SENSOR_READINGS - 1];
 #endif
       vals["temperature"] = temp;
       vals["status"] = status;
@@ -589,8 +597,8 @@ uint8_t writeEEPROMLine(uint16_t n) {
   int16_t* readings = (int16_t*)&pageBuf[4];
 
   uint32_t status =
-    ((uint32_t)readings[MAX_SENSOR_READINGS + 2] & 0xFFFF) |
-    ((uint32_t)readings[MAX_SENSOR_READINGS + 3] << 16);
+    ((uint32_t)(uint16_t)readings[MAX_SENSOR_READINGS + 1]) |
+    (((uint32_t)(uint16_t)readings[MAX_SENSOR_READINGS + 2]) << 16);
 
   uint8_t sentFlag = (pageBuf[EEPROM_SENT_FLAG_OFFSET] == FLAG_SENT);
 
@@ -728,8 +736,8 @@ bool csvLineToJson(const String& line, String& jsonOut, uint32_t& outSeconds2000
   JsonObject vals = doc.createNestedObject("values");
 
 #if defined(SENSOR_BATTERY_ADC) || defined(SENSOR_INA226)
-  // Battery is the last sensor reading if enabled
-  vals["battery"] = values[MAX_SENSOR_READINGS - 1];
+  // Battery is the last sensor reading if enabled (cast to uint16_t for up to 65535 mV)
+  vals["battery"] = (uint16_t)values[MAX_SENSOR_READINGS - 1];
 #endif
   vals["temperature"] = values[MAX_SENSOR_READINGS];
   vals["status"] = status;

@@ -61,11 +61,14 @@ byte i2c_eeprom_read_byte(int deviceaddress, uint16_t eeaddress)
   EEPROM_WIRE.beginTransmission(deviceaddress);
   EEPROM_WIRE.write((int)(eeaddress >> 8));   // MSB
   EEPROM_WIRE.write((int)(eeaddress & 0xFF)); // LSB
-  EEPROM_WIRE.endTransmission();
+  if (EEPROM_WIRE.endTransmission() != 0) {
+    return rdata; // Device NACK - abort to avoid jamming Wire bus
+  }
 
-  EEPROM_WIRE.requestFrom(deviceaddress, 1);
-  if (EEPROM_WIRE.available()) {
-    rdata = EEPROM_WIRE.read();
+  if (EEPROM_WIRE.requestFrom(deviceaddress, 1) > 0) {
+    if (EEPROM_WIRE.available()) {
+      rdata = EEPROM_WIRE.read();
+    }
   }
 
   return rdata;
@@ -121,12 +124,18 @@ void i2c_eeprom_read_buffer(int deviceaddress,
   EEPROM_WIRE.beginTransmission(deviceaddress);
   EEPROM_WIRE.write((int)(eeaddress >> 8));   // MSB
   EEPROM_WIRE.write((int)(eeaddress & 0xFF)); // LSB
-  EEPROM_WIRE.endTransmission();
+  if (EEPROM_WIRE.endTransmission() != 0) {
+    memset(buffer, 0, length);
+    return; // Device NACK - abort requestFrom to avoid jamming Wire bus
+  }
 
-  EEPROM_WIRE.requestFrom(deviceaddress, length);
-  for (int c = 0; c < length; c++) {
-    if (EEPROM_WIRE.available()) {
-      buffer[c] = EEPROM_WIRE.read();
+  if (EEPROM_WIRE.requestFrom(deviceaddress, length) > 0) {
+    for (int c = 0; c < length; c++) {
+      if (EEPROM_WIRE.available()) {
+        buffer[c] = EEPROM_WIRE.read();
+      }
     }
+  } else {
+    memset(buffer, 0, length);
   }
 }

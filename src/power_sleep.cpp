@@ -19,6 +19,7 @@
 #include <SPI.h>
 
 #include "n_logger_config.h"
+#include "sensor_engine.h"
 #ifdef GPRS_MODULE
 #include "utilities.h"
 #endif
@@ -155,6 +156,12 @@ void prepareForDeepSleep(int minutes) {
   gpio_hold_en((gpio_num_t)MAXBOTIX_PWR_PIN);
   pinMode(MAXBOTIX_RX_PIN, INPUT);
   pinMode(MAXBOTIX_TX_PIN, INPUT);
+  #endif
+
+  // Put INA226 into power-down mode before deep sleep
+  // (I2C command, no GPIO needed — chip enters low-quiescent-current shutdown)
+  #ifdef SENSOR_INA226
+  ina226PowerDown();
   #endif
 
 #ifdef DEBUG

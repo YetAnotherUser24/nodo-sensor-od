@@ -13,6 +13,7 @@
  *   -DSENSOR_SOIL_3TIP         = 3-probe soil moisture/temperature (Modbus RTU)
  *   -DSENSOR_SOIL_5TIP         = 5-probe soil comprehensive (Modbus RTU)
  *   -DSENSOR_BATTERY_ADC       = Battery voltage via ADC
+ *   -DSENSOR_INA226            = INA226 voltage/current monitor (I2C)
  */
 
 #pragma once
@@ -29,3 +30,7 @@
  * @param tp Telemetry payload to fill with readings.
  */
 void sensorReadAll(TelemetryPayload& tp);
+
+#ifdef SENSOR_INA226
+void ina226PowerDown();
+#endif

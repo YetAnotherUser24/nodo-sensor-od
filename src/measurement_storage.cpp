@@ -171,7 +171,7 @@ void takeMeasurement() {
   telemetryPayload.temperature = 0;
   for (int i = 0; i < MAX_SENSOR_READINGS; i++)
     telemetryPayload.sensorReadings[i] = 0;
-#ifdef SENSOR_BATTERY_ADC
+#if defined(SENSOR_BATTERY_ADC) || defined(SENSOR_INA226)
   telemetryPayload.battery = 0;
 #endif
   telemetryPayload.status  = 0x00000000;
@@ -189,8 +189,8 @@ void takeMeasurement() {
   /* Sensor sampling via sensor engine (handles all enabled sensors) */
   sensorReadAll(telemetryPayload);
 
-  /* Low-battery emergency config update (battery populated by sensor engine if SENSOR_BATTERY_ADC) */
-#ifdef SENSOR_BATTERY_ADC
+  /* Low-battery emergency config update (battery populated by sensor engine) */
+#if defined(SENSOR_BATTERY_ADC) || defined(SENSOR_INA226)
   if (telemetryPayload.battery < 3400) {
     moduleCfg.measure_time   = 60;
     moduleCfg.bluetooth_time = 1;
@@ -211,7 +211,7 @@ void takeMeasurement() {
   formatDateTime(rtcNow);
   Log(dateStr);
   Logln(" GMT)");
-#ifdef SENSOR_BATTERY_ADC
+#if defined(SENSOR_BATTERY_ADC) || defined(SENSOR_INA226)
   Log("   Battery: ");
   Log(String(telemetryPayload.battery).c_str());
   Logln(" mV");
@@ -371,7 +371,7 @@ void sendEEPROMToThingsboard() {
 
       JsonObject vals = doc.createNestedObject("values");
 
-#ifdef SENSOR_BATTERY_ADC
+#if defined(SENSOR_BATTERY_ADC) || defined(SENSOR_INA226)
       // Battery is the last sensor reading if enabled
       vals["battery"] = readings[MAX_SENSOR_READINGS - 1];
 #endif
@@ -727,7 +727,7 @@ bool csvLineToJson(const String& line, String& jsonOut, uint32_t& outSeconds2000
 
   JsonObject vals = doc.createNestedObject("values");
 
-#ifdef SENSOR_BATTERY_ADC
+#if defined(SENSOR_BATTERY_ADC) || defined(SENSOR_INA226)
   // Battery is the last sensor reading if enabled
   vals["battery"] = values[MAX_SENSOR_READINGS - 1];
 #endif

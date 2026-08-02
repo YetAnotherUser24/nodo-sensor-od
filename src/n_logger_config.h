@@ -309,9 +309,49 @@
   #define BATTERY_NUM_READINGS 0
 #endif
 
+// --- INA226 voltage/current monitor (I2C) ---
+// Mutually exclusive with SENSOR_BATTERY_ADC — both populate the `battery` field.
+#if defined(SENSOR_INA226) && defined(SENSOR_BATTERY_ADC)
+#error "SENSOR_INA226 and SENSOR_BATTERY_ADC are mutually exclusive (both use the battery field)."
+#endif
+
+#ifdef SENSOR_INA226
+  #ifndef INA226_ADDR
+  #define INA226_ADDR 0x45
+  #endif
+  #ifndef INA226_NUM_READINGS
+  #define INA226_NUM_READINGS 1
+  #endif
+  #ifndef INA226_WARMUP_MS
+  #define INA226_WARMUP_MS 200
+  #endif
+  #undef SENSOR_NAME
+  #define SENSOR_NAME "ina226"
+  #ifdef SENSOR_SOIL_3TIP
+  #undef SENSOR_NAME
+  #define SENSOR_NAME "soil-3probe"
+  #elif defined(SENSOR_RADAR)
+  #undef SENSOR_NAME
+  #define SENSOR_NAME "radar"
+  #elif defined(SENSOR_MAXBOTIX_UART)
+  #undef SENSOR_NAME
+  #define SENSOR_NAME "maxbotix-uart"
+  #elif defined(SENSOR_WATER_TEMP)
+  #undef SENSOR_NAME
+  #define SENSOR_NAME "water-temp"
+  #elif defined(SENSOR_SOIL_5TIP)
+  #undef SENSOR_NAME
+  #define SENSOR_NAME "soil-5probe"
+  #else
+  #define SENSOR_NAME "ina226"
+  #endif
+#else
+  #define INA226_NUM_READINGS 0
+#endif
+
 // --- Compute total measurement slots ---
 #ifndef MAX_SENSOR_READINGS
-#define MAX_SENSOR_READINGS (MAXBOTIX_NUM_READINGS + WATER_TEMP_NUM_READINGS + RADAR_NUM_READINGS + BATTERY_NUM_READINGS + SOIL_NUM_READINGS + SOIL5_NUM_READINGS)
+#define MAX_SENSOR_READINGS (MAXBOTIX_NUM_READINGS + WATER_TEMP_NUM_READINGS + RADAR_NUM_READINGS + BATTERY_NUM_READINGS + INA226_NUM_READINGS + SOIL_NUM_READINGS + SOIL5_NUM_READINGS)
 #endif
 
 // --- Fallback banner name when no sensor is defined ---
@@ -352,7 +392,7 @@ struct TelemetryPayload {
   int16_t  freeStorage;
   int16_t  temperature;
   int16_t  sensorReadings[MAX_SENSOR_READINGS];
-#ifdef SENSOR_BATTERY_ADC
+#if defined(SENSOR_BATTERY_ADC) || defined(SENSOR_INA226)
   uint32_t battery;
 #endif
   uint32_t status;

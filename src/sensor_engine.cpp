@@ -379,6 +379,74 @@ static uint16_t batteryAdcRead() {
 #endif /* SENSOR_BATTERY_ADC */
 
 /* ==================================================================
+ *  INA226 I2C voltage monitor helpers
+ * ================================================================== */
+
+#ifdef SENSOR_INA226
+
+#include <Wire.h>
+
+/**
+ * @brief Writes a 16-bit value to an INA226 register over I2C.
+ * @param reg   Register address (0x00 = Config, 0x02 = Bus Voltage, etc.).
+ * @param value 16-bit value to write (MSB first per INA226 datasheet).
+ */
+static void ina226WriteRegister(uint8_t reg, uint16_t value) {
+  Wire.beginTransmission(INA226_ADDR);
+  Wire.write(reg);
+  Wire.write((uint8_t)(value >> 8));    // MSB
+  Wire.write((uint8_t)(value & 0xFF));  // LSB
+  Wire.endTransmission();
+}
+
+/**
+ * @brief Reads a 16-bit INA226 register over I2C.
+ * @param reg Register address.
+ * @return 16-bit register value.
+ */
+static uint16_t ina226ReadRegister(uint8_t reg) {
+  Wire.beginTransmission(INA226_ADDR);
+  Wire.write(reg);
+  Wire.endTransmission(false); // restart, don't release bus
+
+  uint8_t val = 0;
+  if (Wire.requestFrom((uint8_t)INA226_ADDR, (uint8_t)2) >= 2) {
+    uint16_t msb = Wire.read();
+    uint16_t lsb = Wire.read();
+    return (msb << 8) | lsb;
+  }
+  return 0;
+}
+
+/**
+ * @brief Reads bus voltage from the INA226 (triggered mode).
+ *
+ * Call ina226WriteRegister(0x00, 0x3912) first to trigger a conversion,
+ * then delay INA226_WARMUP_MS (75ms for 64-avg x 1.1ms + margin),
+ * then call this function.
+ *
+ * @return Bus voltage in millivolts.
+ */
+static uint16_t ina226ReadBusVoltage() {
+  uint16_t raw = ina226ReadRegister(0x02);
+  // Bus voltage = raw x 1.25 mV
+  // For integer mV: (raw * 125) / 100 = (raw * 5) / 4
+  return (uint16_t)(((uint32_t)raw * 5UL) / 4UL);
+}
+
+/**
+ * @brief Puts the INA226 into power-down mode (MODE bits = 000).
+ *
+ * Keeps all other config bits (AVG, VBUSCT, VSHCT) unchanged.
+ * Called before deep sleep to minimize I2C device quiescent current.
+ */
+void ina226PowerDown() {
+  ina226WriteRegister(0x00, 0x4700);
+}
+
+#endif /* SENSOR_INA226 */
+
+/* ==================================================================
  *  sensorReadAll() — Main entry point
  * ================================================================== */
 
@@ -636,6 +704,22 @@ void sensorReadAll(TelemetryPayload& tp) {
     tp.sensorReadings[readingIndex++] = (int16_t)(tp.battery & 0xFFFF);
   }
   #endif /* SENSOR_BATTERY_ADC */
+
+  /* ---- INA226 (I2C voltage monitor, triggered mode) ---- */
+  #ifdef SENSOR_INA226
+  {
+    // Trigger bus-voltage conversion (64-avg, 1.1ms each, bus continuous mode)
+    ina226WriteRegister(0x00, 0x4726);  // MODE=110 (bus continuous), AVG=64, VBUSCT=1.1ms
+    delay(INA226_WARMUP_MS);
+
+    uint32_t mv = ina226ReadBusVoltage();
+#ifdef DEBUG
+    Logf("[INA226] Bus voltage: %u mV\n", mv);
+#endif
+    tp.battery = mv;
+    tp.sensorReadings[readingIndex++] = (int16_t)(mv & 0xFFFF);
+  }
+  #endif /* SENSOR_INA226 */
 
   /* Pad remaining slots (if any sensor had fewer readings than expected) */
   while (readingIndex < MAX_SENSOR_READINGS) {

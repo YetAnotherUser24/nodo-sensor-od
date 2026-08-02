@@ -27,18 +27,11 @@ extern volatile bool     interruptFlag;
  * This is typically used only for diagnostic fault signaling.
  */
 void error(int errorNum, int errpin) {
-  for (int j = 0; j < 3; j++) {
-
-    for (int i = 0; i < errorNum; i++) {
-      digitalWrite(errpin, HIGH);
-      delay(100);
-      digitalWrite(errpin, LOW);
-      delay(100);
-    }
-
-    for (int i = errorNum; i < 10; i++) {
-      delay(200);
-    }
+  for (int i = 0; i < errorNum; i++) {
+    digitalWrite(errpin, HIGH);
+    delay(150);
+    digitalWrite(errpin, LOW);
+    delay(150);
   }
 }
 

@@ -441,10 +441,19 @@ uint8_t dumpEEPROM() {
   uint16_t i = 0, j = 0;
   bool keep = true;
   bool failure = false;
+  const uint16_t headerBytes = EEPROM_HEADER_SIZE * EEPROM_PAGE_SIZE;
 
   digitalWrite(LED_PIN, HIGH);
 
+#ifdef DEBUG
+  Serial.println(F("[dumpEEPROM] start"));
+  Serial.println(F("[dumpEEPROM] SD.begin()..."));
+#endif
+
   if (!SD.begin(SdSpiConfig(SD_PIN_CS, SHARED_SPI, SD_SCK_MHZ(20), &sdSPI))) {
+#ifdef DEBUG
+    Serial.println(F("[dumpEEPROM] SD.begin() failed"));
+#endif
     telemetryPayload.status =
       changeBit(telemetryPayload.status, STATUS_SD_CARD_BIT, true);
 
@@ -452,14 +461,34 @@ uint8_t dumpEEPROM() {
     return 0;
   }
 
-  while (keep) {
-    byte headerByte = i2c_eeprom_read_byte(EEPROM_ADDRESS, i);
+#ifdef DEBUG
+  Serial.println(F("[dumpEEPROM] SD.begin() ok"));
+#endif
 
+  while (keep && i < headerBytes) {
+    byte headerByte = i2c_eeprom_read_byte(EEPROM_ADDRESS, i);
+/*
+#ifdef DEBUG
+    Serial.print(F("[dumpEEPROM] header["));
+    Serial.print(i);
+    Serial.print(F("] = 0x"));
+    Serial.println(headerByte, HEX);
+#endif
+*/
     for (j = 0; j < 8; j++) {
       if ((headerByte >> j) & 1) {
+/*        
+#ifdef DEBUG
+        Serial.print(F("[dumpEEPROM] writing page "));
+        Serial.println(i * 8 + j);
+#endif
+*/
         failure = !writeEEPROMLine(i * 8 + j);
         if (failure) { keep = false; break; }
       } else {
+#ifdef DEBUG
+        Serial.println(F("[dumpEEPROM] no more pending pages"));
+#endif
         keep = false;
         break;
       }
@@ -468,10 +497,20 @@ uint8_t dumpEEPROM() {
     i++;
   }
 
+#ifdef DEBUG
+  if (keep && i >= headerBytes) {
+    Serial.println(F("[dumpEEPROM] reached end of header bitmap"));
+  }
+#endif
+
   if (fileOpen) {
     sdFile.close();
     fileOpen = false;
   }
+
+#ifdef DEBUG
+  Serial.println(F("[dumpEEPROM] end"));
+#endif
 
   digitalWrite(LED_PIN, LOW);
   return failure ? 0 : 1;
@@ -514,7 +553,12 @@ uint8_t writeEEPROMLine(uint16_t n) {
 #ifdef SD_MODULE
   byte pageBuf[EEPROM_PAGE_SIZE];
   RtcDateTime ts;
-
+/*
+#ifdef DEBUG
+  Serial.print(F("[writeEEPROMLine] page "));
+  Serial.println(n);
+#endif
+*/
   i2c_eeprom_read_buffer(
     EEPROM_ADDRESS,
     (n + EEPROM_HEADER_SIZE) * EEPROM_PAGE_SIZE,
@@ -523,6 +567,19 @@ uint8_t writeEEPROMLine(uint16_t n) {
   );
 
   uint32_t seconds2000 = ((uint32_t*)pageBuf)[0];
+
+  RtcDateTime now = rtc.GetDateTime();
+  uint32_t nowSeconds2000 = now.TotalSeconds();
+
+  if (seconds2000 == 0 || seconds2000 > (nowSeconds2000 + 86400UL)) {
+#ifdef DEBUG
+    Serial.print(F("[writeEEPROMLine] invalid ts raw="));
+    Serial.print(seconds2000);
+    Serial.println(F(" -> stop dump"));
+#endif
+    return 0;
+  }
+
   ts = RtcDateTime(seconds2000);
 
   int16_t* readings = (int16_t*)&pageBuf[4];
@@ -536,16 +593,33 @@ uint8_t writeEEPROMLine(uint16_t n) {
   static uint32_t dayCache = 40;
   if (!fileOpen) {
     getFilename(ts);
+#ifdef DEBUG
+    Serial.print(F("[writeEEPROMLine] ts = "));
+    formatDateTime(ts);
+    Serial.println(dateStr);
+    Serial.print(F("[writeEEPROMLine] opening "));
+    Serial.println(csvFilename);
+#endif
     fileOpen = sdFile.open(csvFilename, O_CREAT | O_WRITE | O_APPEND);
     dayCache = ts.Day();
   } else if (dayCache != ts.Day()) {
-    sdFile.close();
     getFilename(ts);
+#ifdef DEBUG
+    Serial.print(F("[writeEEPROMLine] ts = "));
+    formatDateTime(ts);
+    Serial.println(dateStr);
+    Serial.print(F("[writeEEPROMLine] day change, reopening "));
+    Serial.println(csvFilename);
+#endif
+    sdFile.close();
     fileOpen = sdFile.open(csvFilename, O_CREAT | O_WRITE | O_APPEND);
     dayCache = ts.Day();
   }
 
   if (!fileOpen) {
+#ifdef DEBUG
+    Serial.println(F("[writeEEPROMLine] file open failed"));
+#endif
     error(3, LED_PIN);
     return 0;
   }
@@ -555,10 +629,13 @@ uint8_t writeEEPROMLine(uint16_t n) {
   sdFile.print(", ");
   sdFile.print(seconds2000);
 
-  for (uint16_t k = 0; k < MAX_SENSOR_READINGS + 2; k++) {
+  for (uint16_t k = 0; k < MAX_SENSOR_READINGS; k++) {
     sdFile.print(", ");
-    sdFile.print(readings[k + 2]);
+    sdFile.print(readings[k]);
   }
+
+  sdFile.print(", ");
+  sdFile.print(readings[MAX_SENSOR_READINGS]);
 
   sdFile.print(", ");
   sdFile.print(status);

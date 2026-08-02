@@ -225,6 +225,10 @@ void setup() {
 
   Wire.begin();
 
+#ifdef EEPROM_USE_WIRE1
+  Wire1.begin(I2C_EEPROM_SDA_PIN, I2C_EEPROM_SCL_PIN);
+#endif
+
   // Load config from EEPROM
   EEPROM.begin(sizeof(ModuleConfig));
   EEPROM.get(0, moduleCfg);

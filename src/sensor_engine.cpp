@@ -390,6 +390,7 @@ void sensorReadAll(TelemetryPayload& tp) {
   {
     // Power on — cold-start cycle to ensure clean sensor reset after deep sleep
     pinMode(MAXBOTIX_PWR_PIN, OUTPUT);
+    gpio_hold_dis((gpio_num_t)MAXBOTIX_PWR_PIN);
     digitalWrite(MAXBOTIX_PWR_PIN, LOW);   // Force OFF
 #ifdef DEBUG
     Logf("[MAXBOTIX][DBG] Cold power cycle: OFF for 100ms\n");

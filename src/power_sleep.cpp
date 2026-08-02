@@ -19,7 +19,9 @@
 #include <SPI.h>
 
 #include "n_logger_config.h"
+#ifdef GPRS_MODULE
 #include "utilities.h"
+#endif
 #include "rtc_utils.h"
 #include "log.h"
 
@@ -52,6 +54,12 @@ void sdBusSuspend() {
   pinMode(SD_PIN_SCLK, INPUT);
   pinMode(SD_PIN_MOSI, INPUT);
   pinMode(SD_PIN_MISO, INPUT);
+
+#if SD_EN_PIN != -1
+  pinMode(SD_EN_PIN, OUTPUT);
+  digitalWrite(SD_EN_PIN, HIGH);  // active-low disable
+  gpio_hold_en((gpio_num_t)SD_EN_PIN);
+#endif
 #else
   // No SD module — no-op
 #endif
@@ -62,6 +70,12 @@ void sdBusSuspend() {
  */
 void sdBusResume() {
 #ifdef SD_MODULE
+#if SD_EN_PIN != -1
+  gpio_hold_dis((gpio_num_t)SD_EN_PIN);
+  pinMode(SD_EN_PIN, OUTPUT);
+  digitalWrite(SD_EN_PIN, LOW);   // active-low enable
+  delay(5);
+#endif
   sdSPI.begin(SD_PIN_SCLK, SD_PIN_MISO, SD_PIN_MOSI, SD_PIN_CS);
 #else
   // No SD module — no-op
@@ -149,6 +163,10 @@ void prepareForDeepSleep(int minutes) {
   Log(String(moduleCfg.measure_time).c_str());
   Logln(" MIN");
 #endif
+
+  // Ensure wakeup pin is input (RTC EXT1 handles it during deep sleep,
+  // but explicitly setting INPUT prevents leakage from floating state)
+  pinMode(WAKEUP_PIN, INPUT);
 
   configureAlarm(interval);
 

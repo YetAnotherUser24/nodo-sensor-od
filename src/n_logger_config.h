@@ -387,11 +387,11 @@ struct TelemetryPayload {
  * -------------------------------------------------------------------------- */
 
 #ifndef I2C_SDA_PIN
-#define I2C_SDA_PIN -1
+#define I2C_SDA_PIN 21
 #endif
 
 #ifndef I2C_SCL_PIN
-#define I2C_SCL_PIN -1
+#define I2C_SCL_PIN 22
 #endif
 
 /* --------------------------------------------------------------------------
@@ -458,6 +458,10 @@ struct TelemetryPayload {
 
 #ifndef SD_PIN_CS
 #define SD_PIN_CS 13
+#endif
+
+#ifndef SD_EN_PIN
+#define SD_EN_PIN -1
 #endif
 
 /* --------------------------------------------------------------------------

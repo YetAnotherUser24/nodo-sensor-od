@@ -31,6 +31,18 @@
  */
 void sensorReadAll(TelemetryPayload& tp);
 
+/**
+ * @brief Takes a single real-time measurement sample from the primary distance sensor.
+ * @return Distance in mm, or negative error code.
+ */
+int16_t readPrimarySensorRealtime();
+
+/**
+ * @brief Powers off and closes serial bus for real-time sensor sampling.
+ */
+void stopPrimarySensorRealtime();
+
+
 #ifdef SENSOR_INA226
 void ina226PowerDown();
-#endif
+#endif

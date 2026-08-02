@@ -23,8 +23,17 @@ extern bool bleDeviceConnected;
  */
 extern bool bleStreamingActive;
 
+/** Characteristic for real-time sensor NOTIFY output. */
+class BLECharacteristic;
+extern BLECharacteristic* pNotifyCharacteristic;
+
+/** Flag indicating active real-time sensor streaming requested by "Send" command. */
+extern bool bleRealtimeSendActive;
+
+
 /** Set by BLE disconnect callback when advertising needs to be safely restarted from loop(). */
 extern bool bleRestartAdvertisingRequested;
+
 
 /**
  * @brief Starts BLE stack, initializes advertising and enables write/notify characteristic.

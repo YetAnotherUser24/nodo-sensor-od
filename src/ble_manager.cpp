@@ -44,12 +44,15 @@ extern unsigned long  commandStart;
 
 extern BLEServer*        pServer;
 extern BLECharacteristic* pCharacteristic;
+BLECharacteristic* pNotifyCharacteristic = nullptr;
 
 /* Declared in main module */
 extern bool bleDeviceConnected;
 
 RTC_DATA_ATTR bool bleStreamingActive = false;
+bool bleRealtimeSendActive = false;
 bool bleRestartAdvertisingRequested = false;
+
 
 /* ---------------------------- BLE Callbacks ---------------------------- */
 
@@ -82,6 +85,7 @@ class ServerConnectionCallbacks : public BLEServerCallbacks {
   void onDisconnect(BLEServer* server) override {
     Logln("BLE: Device disconnected");
     bleDeviceConnected = false;
+    bleRealtimeSendActive = false;
     bleRestartAdvertisingRequested = true;
     bleStartTime = millis();
     digitalWrite(LED_PIN, LOW);
@@ -91,7 +95,7 @@ class ServerConnectionCallbacks : public BLEServerCallbacks {
 /* ------------------------- Public BLE Functions ------------------------ */
 
 /**
- * @brief Initializes BLE, configures service/characteristic and starts advertising.
+ * @brief Initializes BLE, configures service/characteristics and starts advertising.
  */
 void startBLE() {
   if (bleActive) {
@@ -108,15 +112,22 @@ void startBLE() {
 
   BLEService* pService = pServer->createService(SERVICE_UUID);
 
+  // WRITE characteristic (beb5483e-36e1-4688-b7f5-ea07361b26a8) for commands
   pCharacteristic = pService->createCharacteristic(
     CHARACTERISTIC_UUID,
     BLECharacteristic::PROPERTY_READ |
-    BLECharacteristic::PROPERTY_WRITE |
-    BLECharacteristic::PROPERTY_NOTIFY
+    BLECharacteristic::PROPERTY_WRITE
   );
-
   pCharacteristic->addDescriptor(new BLE2902());
   pCharacteristic->setCallbacks(new MyCallbacks());
+
+  // NOTIFY/READ characteristic (beb5483e-36e1-4688-b7f5-ea07361b26a9) for real-time measurements
+  pNotifyCharacteristic = pService->createCharacteristic(
+    CHARACTERISTIC_NOTIFY_UUID,
+    BLECharacteristic::PROPERTY_READ |
+    BLECharacteristic::PROPERTY_NOTIFY
+  );
+  pNotifyCharacteristic->addDescriptor(new BLE2902());
 
   pService->start();
   pServer->getAdvertising()->start();
@@ -160,8 +171,10 @@ void stopBLE() {
 
   pServer = nullptr;
   pCharacteristic = nullptr;
+  pNotifyCharacteristic = nullptr;
   bleActive = false;
   bleDeviceConnected = false;
+  bleRealtimeSendActive = false;
   bleRestartAdvertisingRequested = false;
 }
 
@@ -173,8 +186,8 @@ void stopBLE() {
  * Supported commands:
  *  - `T-A-B-C` updates measurement, BLE, and GPRS intervals.
  *  - `D-YYYY-MM-DD-HH-MM-SS` sets RTC date/time.
- *  - `SEND` starts UART sensor streaming via BLE notifications.
- *  - `STOP` disables sensor streaming.
+ *  - `SEND` starts real-time distance sensor notifications (values like "1645").
+ *  - `STOP` disables real-time sensor notifications.
  *  - `DATA` placeholder for future data actions.
  *
  * LED blink is used for simple acknowledgement.
@@ -233,21 +246,32 @@ void processCommand(String cmd) {
     digitalWrite(LED_PIN, HIGH);
   }
 
-  else if (cmd == "START") {
-    bleStreamingActive = true;
-    Logln("Streaming ENABLED - all Serial output will be mirrored over BLE");
+  /* ------------------------------- SEND --------------------------------- */
+  else if (cmd == "SEND") {
+    bleRealtimeSendActive = true;
+    Logln("Real-time sensor stream ENABLED (SEND)");
     digitalWrite(LED_PIN, LOW);  delay(200);
     digitalWrite(LED_PIN, HIGH);
   }
 
+  /* ------------------------------- STOP --------------------------------- */
   else if (cmd == "STOP") {
+    bleRealtimeSendActive = false;
     bleStreamingActive = false;
-    Logln("Streaming DISABLED - Serial output will NOT be mirrored over BLE");
+    Logln("Real-time sensor stream DISABLED (STOP)");
+    digitalWrite(LED_PIN, LOW);  delay(200);
+    digitalWrite(LED_PIN, HIGH);
+  }
+
+  else if (cmd == "START") {
+    bleStreamingActive = true;
+    Logln("Legacy streaming ENABLED");
     digitalWrite(LED_PIN, LOW);  delay(200);
     digitalWrite(LED_PIN, HIGH);
   }
 
   else if (cmd == "C") {
+
     // Reserved for future use
   }
 

@@ -775,3 +775,52 @@ void sensorReadAll(TelemetryPayload& tp) {
     tp.sensorReadings[readingIndex++] = 0;
   }
 }
+
+/* ==================================================================
+ *  Real-Time Sensor Preview Helpers
+ * ================================================================== */
+
+static bool realtimeSensorInit = false;
+
+int16_t readPrimarySensorRealtime() {
+  int16_t val = -1;
+
+#ifdef SENSOR_MAXBOTIX_UART
+  if (!realtimeSensorInit) {
+    pinMode(MAXBOTIX_PWR_PIN, OUTPUT);
+    gpio_hold_dis((gpio_num_t)MAXBOTIX_PWR_PIN);
+    digitalWrite(MAXBOTIX_PWR_PIN, HIGH);
+    delay(MAXBOTIX_WARMUP_MS);
+    maxbotixSerial.begin(9600, SERIAL_8N1, MAXBOTIX_RX_PIN, -1);
+    while (maxbotixSerial.available()) maxbotixSerial.read();
+    realtimeSensorInit = true;
+  }
+  val = maxbotixReadSingle();
+#elif defined(SENSOR_RADAR)
+  if (!realtimeSensorInit) {
+    pinMode(RADAR_PWR_PIN, OUTPUT);
+    gpio_hold_dis((gpio_num_t)RADAR_PWR_PIN);
+    digitalWrite(RADAR_PWR_PIN, HIGH);
+    delay(RADAR_WARMUP_MS);
+    radarSerial.begin(RADAR_BAUDRATE, SERIAL_8N1, RADAR_RX_PIN, RADAR_TX_PIN);
+    realtimeSensorInit = true;
+  }
+  val = radarReadDistance();
+#endif
+
+  return val;
+}
+
+void stopPrimarySensorRealtime() {
+  if (!realtimeSensorInit) return;
+
+#ifdef SENSOR_MAXBOTIX_UART
+  maxbotixSerial.end();
+  digitalWrite(MAXBOTIX_PWR_PIN, LOW);
+#elif defined(SENSOR_RADAR)
+  radarSerial.end();
+  digitalWrite(RADAR_PWR_PIN, LOW);
+#endif
+
+  realtimeSensorInit = false;
+}

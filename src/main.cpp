@@ -475,21 +475,43 @@ void loop() {
       }
     }
 
+    /* Real-time sensor preview stream ("SEND" command) */
+    if (bleRealtimeSendActive && bleDeviceConnected) {
+      static unsigned long lastRealtimeSample = 0;
+      if (millis() - lastRealtimeSample >= 1000) {
+        lastRealtimeSample = millis();
+        int16_t dist = readPrimarySensorRealtime();
+        if (dist > 0 && pNotifyCharacteristic != nullptr) {
+          String distStr = String(dist);
+          pNotifyCharacteristic->setValue(distStr.c_str());
+          pNotifyCharacteristic->notify();
+#ifdef DEBUG
+          Logf("[BLE][REALTIME] Sent: %s mm\n", distStr.c_str());
+#endif
+        }
+        bleStartTime = millis(); // Refresh BLE active window while real-time streaming
+      }
+    } else {
+      stopPrimarySensorRealtime();
+    }
+
     // If streaming was enabled but client stays disconnected past active window, disable streaming mode
     if (bleStreamingActive && !bleDeviceConnected && (millis() - bleStartTime > BLE_ACTIVE_TIME)) {
       Logln("BLE streaming active but no client connected. Disabling streaming mode.");
       bleStreamingActive = false;
     }
 
-    if (!bleStreamingActive && !bleDeviceConnected && (millis() - bleStartTime > BLE_ACTIVE_TIME)) {
+    if (!bleStreamingActive && !bleRealtimeSendActive && !bleDeviceConnected && (millis() - bleStartTime > BLE_ACTIVE_TIME)) {
       Logln(" BLE time expired, entering sleep...");
       stopBLE();
       prepareForDeepSleep(moduleCfg.measure_time);
     }
   } else {
+    stopPrimarySensorRealtime();
     prepareForDeepSleep(moduleCfg.measure_time);
   }
 
   delay(50);
 }
+
 

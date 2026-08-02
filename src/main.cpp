@@ -11,7 +11,9 @@
  */
 
 #include "n_logger_config.h"
+#ifdef GPRS_MODULE
 #include "utilities.h"
+#endif
 #include "sensor_engine.h"
 #include "ble_manager.h"
 #include "modem_mqtt.h"
@@ -188,7 +190,7 @@ void setup() {
   // Always initialize Serial so Log()/Logln()/Logf() work regardless of DEBUG
   Serial.begin(115200);
 
-  Wire.begin();
+  Wire.begin(I2C_SDA_PIN, I2C_SCL_PIN);
 
 #ifdef EEPROM_USE_WIRE1
   Wire1.begin(I2C_EEPROM_SDA_PIN, I2C_EEPROM_SCL_PIN);
@@ -209,6 +211,11 @@ void setup() {
 
   // SD bus init
 #ifdef SD_MODULE
+#if SD_EN_PIN != -1
+  pinMode(SD_EN_PIN, OUTPUT);
+  digitalWrite(SD_EN_PIN, LOW);   // active-low enable
+  delay(10);                       // let SD module power stabilize
+#endif
   sdSPI.begin(SD_PIN_SCLK, SD_PIN_MISO, SD_PIN_MOSI, SD_PIN_CS);
 #endif
 

@@ -417,8 +417,8 @@
 
 
 
-#else
-    #error "Use ArduinoIDE, please open the macro definition corresponding to the board above <utilities.h>"
+#elif defined(GPRS_MODULE)
+    #error "GPRS builds require a LILYGO_* board macro in platformio.ini build_flags (see utilities.h for supported boards)"
 #endif
 
 

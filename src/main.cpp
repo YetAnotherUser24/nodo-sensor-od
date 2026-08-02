@@ -35,6 +35,7 @@
 #endif
 
 #include <esp_bt.h>
+#include <esp_task_wdt.h>
 #include <driver/gpio.h>
 #include <string.h>
 
@@ -184,11 +185,29 @@ BLECharacteristic* pCharacteristic = nullptr;
  * @brief Initializes pins, RTC, SD, configuration and communication modules.
  */
 void setup() {
+  // Release hardware GPIO hold locks latched from deep sleep
+  gpio_deep_sleep_hold_dis();
+
   pinMode(LED_PIN, OUTPUT);
   digitalWrite(LED_PIN, LOW);
 
   // Always initialize Serial so Log()/Logln()/Logf() work regardless of DEBUG
   Serial.begin(115200);
+
+
+  // Initialize Task Watchdog Timer (30s) for hardware auto-recovery
+  #if defined(ESP_IDF_VERSION_MAJOR) && (ESP_IDF_VERSION_MAJOR >= 5)
+  esp_task_wdt_config_t wdt_config = {
+      .timeout_ms = 30000,
+      .idle_core_mask = (1 << portNUM_PROCESSORS) - 1,
+      .trigger_panic = true,
+  };
+  esp_task_wdt_reconfigure(&wdt_config);
+  esp_task_wdt_add(NULL);
+  #else
+  esp_task_wdt_init(30, true);
+  esp_task_wdt_add(NULL);
+  #endif
 
   Wire.begin(I2C_SDA_PIN, I2C_SCL_PIN);
 
@@ -437,8 +456,32 @@ void setup() {
  * @brief Main loop: manages BLE active window and deep sleep transitions.
  */
 void loop() {
+  esp_task_wdt_reset();
+
+  if (bleRestartAdvertisingRequested && bleActive && pServer != nullptr) {
+    bleRestartAdvertisingRequested = false;
+    Logln("Restarting BLE advertising...");
+    pServer->getAdvertising()->start();
+  }
+
   if (bleActive) {
-    if (millis() - bleStartTime > BLE_ACTIVE_TIME) {
+    static unsigned long lastBleReport = 0;
+    if (!bleDeviceConnected && (millis() - lastBleReport >= 5000)) {
+      lastBleReport = millis();
+      unsigned long elapsed = millis() - bleStartTime;
+      if (elapsed < BLE_ACTIVE_TIME) {
+        unsigned long remainingSec = (BLE_ACTIVE_TIME - elapsed) / 1000;
+        Logf("[BLE] Waiting for connection... %lu s remaining before sleep\n", remainingSec);
+      }
+    }
+
+    // If streaming was enabled but client stays disconnected past active window, disable streaming mode
+    if (bleStreamingActive && !bleDeviceConnected && (millis() - bleStartTime > BLE_ACTIVE_TIME)) {
+      Logln("BLE streaming active but no client connected. Disabling streaming mode.");
+      bleStreamingActive = false;
+    }
+
+    if (!bleStreamingActive && !bleDeviceConnected && (millis() - bleStartTime > BLE_ACTIVE_TIME)) {
       Logln(" BLE time expired, entering sleep...");
       stopBLE();
       prepareForDeepSleep(moduleCfg.measure_time);
@@ -449,3 +492,4 @@ void loop() {
 
   delay(50);
 }
+

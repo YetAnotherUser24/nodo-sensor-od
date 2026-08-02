@@ -49,6 +49,7 @@ extern BLECharacteristic* pCharacteristic;
 extern bool bleDeviceConnected;
 
 RTC_DATA_ATTR bool bleStreamingActive = false;
+bool bleRestartAdvertisingRequested = false;
 
 /* ---------------------------- BLE Callbacks ---------------------------- */
 
@@ -74,14 +75,16 @@ class ServerConnectionCallbacks : public BLEServerCallbacks {
   void onConnect(BLEServer* server) override {
     Logln("BLE: Device connected");
     bleDeviceConnected = true;
+    bleRestartAdvertisingRequested = false;
     digitalWrite(LED_PIN, HIGH);
   }
 
   void onDisconnect(BLEServer* server) override {
     Logln("BLE: Device disconnected");
     bleDeviceConnected = false;
+    bleRestartAdvertisingRequested = true;
+    bleStartTime = millis();
     digitalWrite(LED_PIN, LOW);
-    server->startAdvertising();
   }
 };
 
@@ -91,6 +94,11 @@ class ServerConnectionCallbacks : public BLEServerCallbacks {
  * @brief Initializes BLE, configures service/characteristic and starts advertising.
  */
 void startBLE() {
+  if (bleActive) {
+    Logln("BLE already active.");
+    return;
+  }
+
   Logln("Starting BLE...");
 
   BLEDevice::init(N_LOGGER_BLE_NAME);
@@ -114,6 +122,7 @@ void startBLE() {
   pServer->getAdvertising()->start();
 
   bleActive    = true;
+  bleRestartAdvertisingRequested = false;
   bleStartTime = millis();
 
   Logln("BLE active and advertising");
@@ -138,12 +147,22 @@ void startBLE() {
 }
 
 /**
- * @brief Fully deinitializes the BLE stack.
+ * @brief Safely stops BLE advertising and clears BLE state flags without crashing.
  */
 void stopBLE() {
+  if (!bleActive) return;
   Logln("Stopping BLE...");
-  BLEDevice::deinit(true);
+
+  if (pServer != nullptr) {
+    pServer->getAdvertising()->stop();
+    delay(50);
+  }
+
+  pServer = nullptr;
+  pCharacteristic = nullptr;
   bleActive = false;
+  bleDeviceConnected = false;
+  bleRestartAdvertisingRequested = false;
 }
 
 /* --------------------------- Command Handling -------------------------- */

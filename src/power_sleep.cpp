@@ -186,5 +186,14 @@ void prepareForDeepSleep(int minutes) {
 
   esp_sleep_enable_ext1_wakeup(WAKEUP_PIN_BITMASK, ESP_EXT1_WAKEUP_ALL_LOW);
 
+  // Double blink LED to visually signal transition to deep sleep
+  pinMode(LED_PIN, OUTPUT);
+  digitalWrite(LED_PIN, HIGH); delay(150);
+  digitalWrite(LED_PIN, LOW);  delay(150);
+  digitalWrite(LED_PIN, HIGH); delay(150);
+  digitalWrite(LED_PIN, LOW);  delay(150);
+
+  Serial.flush();
+
   esp_deep_sleep_start();
-}
+}

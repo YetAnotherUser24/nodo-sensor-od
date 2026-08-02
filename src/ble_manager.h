@@ -23,6 +23,9 @@ extern bool bleDeviceConnected;
  */
 extern bool bleStreamingActive;
 
+/** Set by BLE disconnect callback when advertising needs to be safely restarted from loop(). */
+extern bool bleRestartAdvertisingRequested;
+
 /**
  * @brief Starts BLE stack, initializes advertising and enables write/notify characteristic.
  */

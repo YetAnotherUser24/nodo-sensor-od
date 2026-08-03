@@ -16,10 +16,18 @@ void setup() {
   Serial.println("=== DIAG: BOOT OK ===");
   Serial.print("Wakeup cause: ");
   switch (esp_sleep_get_wakeup_cause()) {
-    case ESP_SLEEP_WAKEUP_EXT0:  Serial.println("EXT0"); break;
-    case ESP_SLEEP_WAKEUP_EXT1:  Serial.println("EXT1"); break;
-    case ESP_SLEEP_WAKEUP_TIMER: Serial.println("TIMER"); break;
-    default:                     Serial.println("POWERON/RESET"); break;
+  case ESP_SLEEP_WAKEUP_EXT0:
+    Serial.println("EXT0");
+    break;
+  case ESP_SLEEP_WAKEUP_EXT1:
+    Serial.println("EXT1");
+    break;
+  case ESP_SLEEP_WAKEUP_TIMER:
+    Serial.println("TIMER");
+    break;
+  default:
+    Serial.println("POWERON/RESET");
+    break;
   }
 
   Serial.println("Sleeping for 30 seconds...");

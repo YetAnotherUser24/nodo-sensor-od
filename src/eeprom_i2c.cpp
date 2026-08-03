@@ -7,17 +7,17 @@
  */
 
 #include "eeprom_i2c.h"
-#include <Wire.h>
+#include "log.h"
 #include "n_logger_config.h"
 #include "utilities.h"
-#include "log.h"
+#include <Wire.h>
 
 #ifndef EEPROM_HEADER_SIZE
-  #define EEPROM_HEADER_SIZE 8
+#define EEPROM_HEADER_SIZE 8
 #endif
 
 #ifndef EEPROM_PAGE_SIZE
-  #define EEPROM_PAGE_SIZE 32
+#define EEPROM_PAGE_SIZE 32
 #endif
 
 /**
@@ -31,14 +31,10 @@
  * @param data Pointer to data buffer.
  * @param length Number of bytes to write.
  */
-void i2c_eeprom_write_page(int deviceaddress,
-                           unsigned int eeaddresspage,
-                           byte* data,
-                           byte length)
-{
+void i2c_eeprom_write_page(int deviceaddress, unsigned int eeaddresspage, byte* data, byte length) {
   EEPROM_WIRE.beginTransmission(deviceaddress);
-  EEPROM_WIRE.write((int)(eeaddresspage >> 8));      // MSB of address
-  EEPROM_WIRE.write((int)(eeaddresspage & 0xFF));    // LSB of address
+  EEPROM_WIRE.write((int)(eeaddresspage >> 8));   // MSB of address
+  EEPROM_WIRE.write((int)(eeaddresspage & 0xFF)); // LSB of address
 
   for (byte c = 0; c < length; c++) {
     EEPROM_WIRE.write(data[c]);
@@ -50,7 +46,7 @@ void i2c_eeprom_write_page(int deviceaddress,
     Logf("[EEPROM][ERR] write_page addr 0x%04X failed: error %d\n", eeaddresspage, err);
   }
 #endif
-  delay(5);   // EEPROM write cycle time
+  delay(5); // EEPROM write cycle time
 }
 
 /**
@@ -60,8 +56,7 @@ void i2c_eeprom_write_page(int deviceaddress,
  * @param eeaddress Absolute address of byte to read.
  * @return The byte read from EEPROM.
  */
-byte i2c_eeprom_read_byte(int deviceaddress, uint16_t eeaddress)
-{
+byte i2c_eeprom_read_byte(int deviceaddress, uint16_t eeaddress) {
   byte rdata = 0x00;
 
   EEPROM_WIRE.beginTransmission(deviceaddress);
@@ -91,11 +86,10 @@ byte i2c_eeprom_read_byte(int deviceaddress, uint16_t eeaddress)
  * @param eeaddress Absolute memory address.
  * @param data Byte to write.
  */
-void i2c_eeprom_write_byte(int deviceaddress, uint16_t eeaddress, byte data)
-{
+void i2c_eeprom_write_byte(int deviceaddress, uint16_t eeaddress, byte data) {
   EEPROM_WIRE.beginTransmission(deviceaddress);
-  EEPROM_WIRE.write(eeaddress >> 8);        // MSB
-  EEPROM_WIRE.write(eeaddress & 0xFF);      // LSB
+  EEPROM_WIRE.write(eeaddress >> 8);   // MSB
+  EEPROM_WIRE.write(eeaddress & 0xFF); // LSB
   EEPROM_WIRE.write((int)data);
   uint8_t err = EEPROM_WIRE.endTransmission();
 #ifdef DEBUG
@@ -109,8 +103,7 @@ void i2c_eeprom_write_byte(int deviceaddress, uint16_t eeaddress, byte data)
 /**
  * @brief Resets the EEPROM header region.
  */
-void resetEEPromHeader(int deviceaddress)
-{
+void resetEEPromHeader(int deviceaddress) {
   uint16_t headerLen = EEPROM_HEADER_SIZE * EEPROM_PAGE_SIZE;
 
   for (uint16_t i = 0; i < headerLen; i++) {
@@ -126,11 +119,7 @@ void resetEEPromHeader(int deviceaddress)
  * @param buffer Output buffer to fill.
  * @param length Number of bytes to read.
  */
-void i2c_eeprom_read_buffer(int deviceaddress,
-                            uint16_t eeaddress,
-                            byte *buffer,
-                            int length)
-{
+void i2c_eeprom_read_buffer(int deviceaddress, uint16_t eeaddress, byte* buffer, int length) {
   EEPROM_WIRE.beginTransmission(deviceaddress);
   EEPROM_WIRE.write((int)(eeaddress >> 8));   // MSB
   EEPROM_WIRE.write((int)(eeaddress & 0xFF)); // LSB
@@ -156,4 +145,3 @@ void i2c_eeprom_read_buffer(int deviceaddress,
     memset(buffer, 0, length);
   }
 }
-

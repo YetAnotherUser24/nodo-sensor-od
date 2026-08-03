@@ -4,15 +4,15 @@
  */
 
 #include "error_sensor.h"
-#include <Arduino.h>
 #include "utilities.h"
+#include <Arduino.h>
 
 /* ----------------------- External Runtime Flags ----------------------- */
 /** Incremented each time the ISR triggers (declared in main project). */
 extern volatile uint16_t interruptCount;
 
 /** Flag set true on ISR trigger (declared in main project). */
-extern volatile bool     interruptFlag;
+extern volatile bool interruptFlag;
 
 /* ------------------------------ Error LED ----------------------------- */
 

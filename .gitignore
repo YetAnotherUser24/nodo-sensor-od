@@ -63,3 +63,4 @@ Thumbs.db
 # Local deployment config
 src/config.h
 implementation_plan.md
+.clang-format

@@ -17,8 +17,8 @@
  */
 
 #pragma once
-#include <Arduino.h>
 #include "n_logger_config.h"
+#include <Arduino.h>
 
 /**
  * @brief Performs a full measurement cycle on all enabled sensors.
@@ -42,7 +42,6 @@ int16_t readPrimarySensorRealtime();
  */
 void stopPrimarySensorRealtime();
 
-
 #ifdef SENSOR_INA226
 void ina226PowerDown();
-#endif
+#endif

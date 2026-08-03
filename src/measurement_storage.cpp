@@ -19,13 +19,13 @@
 #include <Arduino.h>
 #include <HardwareSerial.h>
 
-#include "n_logger_config.h"
-#include "measurement_storage.h"
-#include "sensor_engine.h"
 #include "eeprom_i2c.h"
-#include "modem_mqtt.h"
 #include "error_sensor.h"
+#include "measurement_storage.h"
+#include "modem_mqtt.h"
+#include "n_logger_config.h"
 #include "rtc_utils.h"
+#include "sensor_engine.h"
 
 #include "config.h"
 #include "log.h"
@@ -47,33 +47,33 @@
  * -------------------------------------------------------------------------- */
 
 #ifndef SerialMon
-  #define SerialMon Serial
+#define SerialMon Serial
 #endif
 
 extern ModuleConfig moduleCfg;
 extern TelemetryPayload telemetryPayload;
 
 extern RTC_DATA_ATTR uint16_t eepromWritePage;
-extern byte      eepromPageBuf[EEPROM_PAGE_SIZE];
-extern bool      needFlushToSD;
+extern byte eepromPageBuf[EEPROM_PAGE_SIZE];
+extern bool needFlushToSD;
 
 #ifdef SD_MODULE
-extern SdFat     SD;
-extern SdFile    sdFile;
-extern SPIClass  sdSPI;
+extern SdFat SD;
+extern SdFile sdFile;
+extern SPIClass sdSPI;
 #endif
-extern char      csvFilename[24];
-extern bool      fileOpen;
+extern char csvFilename[24];
+extern bool fileOpen;
 
 extern RtcDS3231<TwoWire> rtc;
-extern RtcDateTime        rtcNow;
-extern char               dateStr[20];
+extern RtcDateTime rtcNow;
+extern char dateStr[20];
 
 #ifdef GPRS_MODULE
 extern PubSubClient mqtt;
 #endif
 
-extern bool     mqttAvailable;
+extern bool mqttAvailable;
 
 /* --------------------------------------------------------------------------
  *  SD / EEPROM Helpers (unchanged logic, documented)
@@ -82,11 +82,12 @@ extern bool     mqttAvailable;
 String markLineSent(const String& line) {
   String s = line;
 
-  while (s.length() && s[s.length()-1] == ' ')
-    s.remove(s.length()-1);
+  while (s.length() && s[s.length() - 1] == ' ')
+    s.remove(s.length() - 1);
 
   int lastComma = s.lastIndexOf(',');
-  if (lastComma <= 0) return line;
+  if (lastComma <= 0)
+    return line;
 
   return s.substring(0, lastComma) + ", 1";
 }
@@ -102,9 +103,8 @@ uint16_t getEEPROMFreePages() {
   uint16_t used = 0;
   for (uint16_t i = 0; i < EEPROM_HEADER_SIZE; i++) {
     uint8_t b = header[i];
-    used +=
-      (b & 1) + ((b >> 1) & 1) + ((b >> 2) & 1) + ((b >> 3) & 1) +
-      ((b >> 4) & 1) + ((b >> 5) & 1) + ((b >> 6) & 1) + ((b >> 7) & 1);
+    used += (b & 1) + ((b >> 1) & 1) + ((b >> 2) & 1) + ((b >> 3) & 1) + ((b >> 4) & 1) +
+            ((b >> 5) & 1) + ((b >> 6) & 1) + ((b >> 7) & 1);
   }
 
   uint16_t totalPages = EEPROM_MAX_PAGES - EEPROM_HEADER_SIZE;
@@ -121,18 +121,18 @@ uint32_t getSDFreeMB() {
   }
 
   FsVolume* vol = SD.vol();
-  if (!vol) return 0;
+  if (!vol)
+    return 0;
 
-  uint64_t totalBytes =
-    (uint64_t)vol->clusterCount() *
-    (uint64_t)vol->sectorsPerCluster() * 512ULL;
+  uint64_t totalBytes = (uint64_t)vol->clusterCount() * (uint64_t)vol->sectorsPerCluster() * 512ULL;
 
   SdFile dir, entry;
   uint64_t usedBytes = 0;
 
   if (dir.open("/")) {
     while (entry.openNext(&dir, O_READ)) {
-      if (!entry.isDir()) usedBytes += entry.fileSize();
+      if (!entry.isDir())
+        usedBytes += entry.fileSize();
       entry.close();
     }
     dir.close();
@@ -174,7 +174,7 @@ void takeMeasurement() {
 #if defined(SENSOR_BATTERY_ADC) || defined(SENSOR_INA226)
   telemetryPayload.battery = 0;
 #endif
-  telemetryPayload.status  = 0x00000000;
+  telemetryPayload.status = 0x00000000;
 
   rtcNow = rtc.GetDateTime();
   for (int retry = 0; retry < 3 && rtcNow.Year() < 2020; retry++) {
@@ -200,9 +200,9 @@ void takeMeasurement() {
   /* Low-battery emergency config update (battery populated by sensor engine) */
 #if defined(SENSOR_BATTERY_ADC) || defined(SENSOR_INA226)
   if (telemetryPayload.battery < 3400) {
-    moduleCfg.measure_time   = 60;
+    moduleCfg.measure_time = 60;
     moduleCfg.bluetooth_time = 1;
-    moduleCfg.GPRS_time      = 1440;
+    moduleCfg.GPRS_time = 1440;
 
     EEPROM.begin(sizeof(ModuleConfig));
     EEPROM.put(0, moduleCfg);
@@ -230,7 +230,8 @@ void takeMeasurement() {
   Log("   Sensor Readings: [");
   for (int i = 0; i < MAX_SENSOR_READINGS; i++) {
     Log(String(telemetryPayload.sensorReadings[i]).c_str());
-    if (i < MAX_SENSOR_READINGS - 1) Log(", ");
+    if (i < MAX_SENSOR_READINGS - 1)
+      Log(", ");
   }
   Logln("]");
   Log("   Status: 0x");
@@ -246,32 +247,26 @@ void takeMeasurement() {
     eepromPageBuf[i + 4] = ((byte*)telemetryPayload.sensorReadings)[i];
 
   for (int i = 0; i < 2; i++)
-    eepromPageBuf[i + 4 + MAX_SENSOR_READINGS*2] = ((byte*)&tempCenti)[i];
+    eepromPageBuf[i + 4 + MAX_SENSOR_READINGS * 2] = ((byte*)&tempCenti)[i];
 
   for (int i = 0; i < 4; i++)
-    eepromPageBuf[i + 4 + MAX_SENSOR_READINGS*2 + 2] = ((byte*)&telemetryPayload.status)[i];
+    eepromPageBuf[i + 4 + MAX_SENSOR_READINGS * 2 + 2] = ((byte*)&telemetryPayload.status)[i];
 
-  for (int i = 4 + MAX_SENSOR_READINGS*2 + 2 + 4; i < EEPROM_PAGE_SIZE - 1; i++)
+  for (int i = 4 + MAX_SENSOR_READINGS * 2 + 2 + 4; i < EEPROM_PAGE_SIZE - 1; i++)
     eepromPageBuf[i] = 0;
 
   eepromPageBuf[EEPROM_SENT_FLAG_OFFSET] = FLAG_NOT_SENT;
 
-  unsigned int dataAddr =
-    (eepromWritePage + EEPROM_HEADER_SIZE) * EEPROM_PAGE_SIZE;
+  unsigned int dataAddr = (eepromWritePage + EEPROM_HEADER_SIZE) * EEPROM_PAGE_SIZE;
 
   i2c_eeprom_write_page(EEPROM_ADDRESS, dataAddr, eepromPageBuf, EEPROM_PAGE_SIZE);
   delay(50);
 
   /* Update header bit */
-  byte headerByte =
-    i2c_eeprom_read_byte(EEPROM_ADDRESS, (uint16_t)eepromWritePage / 8);
+  byte headerByte = i2c_eeprom_read_byte(EEPROM_ADDRESS, (uint16_t)eepromWritePage / 8);
 
   bitWrite(headerByte, eepromWritePage % 8, 1);
-  i2c_eeprom_write_byte(
-    EEPROM_ADDRESS,
-    (uint16_t)eepromWritePage / 8,
-    headerByte
-  );
+  i2c_eeprom_write_byte(EEPROM_ADDRESS, (uint16_t)eepromWritePage / 8, headerByte);
 
   eepromWritePage++;
 
@@ -316,7 +311,8 @@ void sendSDPendingToThingsboard() {
   if (!SD.begin(SdSpiConfig(SD_PIN_CS, SHARED_SPI, SD_SCK_MHZ(20), &sdSPI)))
     return;
 
-  if (!dir.open("/")) return;
+  if (!dir.open("/"))
+    return;
 
   char name[32];
   uint16_t stillPending = 0;
@@ -330,7 +326,8 @@ void sendSDPendingToThingsboard() {
       if (fname.endsWith(".CSV") && fname.startsWith("20")) {
         String full = String("/") + fname;
         bool pending = processCsvFile(full.c_str());
-        if (pending) stillPending++;
+        if (pending)
+          stillPending++;
       }
     }
     entry.close();
@@ -360,19 +357,17 @@ void sendEEPROMToThingsboard() {
   byte pageBuf[EEPROM_PAGE_SIZE];
 
   while (pageIndex < (EEPROM_MAX_PAGES - EEPROM_HEADER_SIZE)) {
-    unsigned int addr =
-      (pageIndex + EEPROM_HEADER_SIZE) * EEPROM_PAGE_SIZE;
+    unsigned int addr = (pageIndex + EEPROM_HEADER_SIZE) * EEPROM_PAGE_SIZE;
 
     i2c_eeprom_read_buffer(EEPROM_ADDRESS, addr, pageBuf, EEPROM_PAGE_SIZE);
 
     if (pageBuf[EEPROM_SENT_FLAG_OFFSET] == FLAG_NOT_SENT) {
       uint32_t seconds2000 = *((uint32_t*)&pageBuf[0]);
       int16_t* readings = (int16_t*)&pageBuf[4];
-      int16_t  temp  = *((int16_t*)&pageBuf[4 + MAX_SENSOR_READINGS*2]);
-      uint32_t status = *((uint32_t*)&pageBuf[4 + MAX_SENSOR_READINGS*2 + 2]);
+      int16_t temp = *((int16_t*)&pageBuf[4 + MAX_SENSOR_READINGS * 2]);
+      uint32_t status = *((uint32_t*)&pageBuf[4 + MAX_SENSOR_READINGS * 2 + 2]);
 
-      uint64_t tsUnix =
-        ((uint64_t)seconds2000 + UNIX_OFFSET_2000 + LOCAL_TZ_OFFSET_SEC) * 1000ULL;
+      uint64_t tsUnix = ((uint64_t)seconds2000 + UNIX_OFFSET_2000 + LOCAL_TZ_OFFSET_SEC) * 1000ULL;
 
       StaticJsonDocument<512> doc;
       doc["ts"] = tsUnix;
@@ -387,10 +382,11 @@ void sendEEPROMToThingsboard() {
       vals["status"] = status;
 
       JsonArray arr = vals.createNestedArray("sensorReadings");
-      for (int i = 0; i < MAX_SENSOR_READINGS; i++) arr.add(readings[i]);
+      for (int i = 0; i < MAX_SENSOR_READINGS; i++)
+        arr.add(readings[i]);
 
       vals["eepromFreePages"] = getEEPROMFreePages();
-      vals["sdFreeMB"]        = getSDFreeMB();
+      vals["sdFreeMB"] = getSDFreeMB();
 
       String jsonOut;
       serializeJson(doc, jsonOut);
@@ -470,13 +466,11 @@ uint8_t dumpEEPROM() {
   Serial.println(F("[dumpEEPROM] SD.begin()..."));
 #endif
 
-
   if (!SD.begin(SdSpiConfig(SD_PIN_CS, SHARED_SPI, SD_SCK_MHZ(20), &sdSPI))) {
 #ifdef DEBUG
     Serial.println(F("[dumpEEPROM] SD.begin() failed"));
 #endif
-    telemetryPayload.status =
-      changeBit(telemetryPayload.status, STATUS_SD_CARD_BIT, true);
+    telemetryPayload.status = changeBit(telemetryPayload.status, STATUS_SD_CARD_BIT, true);
 
     return 0;
   }
@@ -494,7 +488,8 @@ uint8_t dumpEEPROM() {
         if (res == 1) {
           wroteAny = true;
         } else if (res == 2) {
-          // Reached end of valid EEPROM data (empty page/zero timestamp) -> stop dump cleanly
+          // Reached end of valid EEPROM data (empty page/zero timestamp) -> stop dump
+          // cleanly
           keep = false;
           break;
         } else {
@@ -514,8 +509,6 @@ uint8_t dumpEEPROM() {
 
     i++;
   }
-
-
 
 #ifdef DEBUG
   if (keep && i >= headerBytes) {
@@ -551,16 +544,16 @@ void getFilename(const RtcDateTime& ts) {
   int m = ts.Month();
   int d = ts.Day();
 
-  csvFilename[0]  = '/';
-  csvFilename[1]  = '2';
-  csvFilename[2]  = '0';
-  csvFilename[3]  = (y - 2000) / 10 + '0';
-  csvFilename[4]  = y % 10 + '0';
-  csvFilename[5]  = m / 10 + '0';
-  csvFilename[6]  = m % 10 + '0';
-  csvFilename[7]  = d / 10 + '0';
-  csvFilename[8]  = d % 10 + '0';
-  csvFilename[9]  = '.';
+  csvFilename[0] = '/';
+  csvFilename[1] = '2';
+  csvFilename[2] = '0';
+  csvFilename[3] = (y - 2000) / 10 + '0';
+  csvFilename[4] = y % 10 + '0';
+  csvFilename[5] = m / 10 + '0';
+  csvFilename[6] = m % 10 + '0';
+  csvFilename[7] = d / 10 + '0';
+  csvFilename[8] = d % 10 + '0';
+  csvFilename[9] = '.';
   csvFilename[10] = 'C';
   csvFilename[11] = 'S';
   csvFilename[12] = 'V';
@@ -576,18 +569,14 @@ uint8_t writeEEPROMLine(uint16_t n) {
 #ifdef SD_MODULE
   byte pageBuf[EEPROM_PAGE_SIZE];
   RtcDateTime ts;
-/*
-#ifdef DEBUG
-  Serial.print(F("[writeEEPROMLine] page "));
-  Serial.println(n);
-#endif
-*/
-  i2c_eeprom_read_buffer(
-    EEPROM_ADDRESS,
-    (n + EEPROM_HEADER_SIZE) * EEPROM_PAGE_SIZE,
-    pageBuf,
-    EEPROM_PAGE_SIZE
-  );
+  /*
+  #ifdef DEBUG
+    Serial.print(F("[writeEEPROMLine] page "));
+    Serial.println(n);
+  #endif
+  */
+  i2c_eeprom_read_buffer(EEPROM_ADDRESS, (n + EEPROM_HEADER_SIZE) * EEPROM_PAGE_SIZE, pageBuf,
+                         EEPROM_PAGE_SIZE);
 
   uint32_t seconds2000 = ((uint32_t*)pageBuf)[0];
 
@@ -603,14 +592,12 @@ uint8_t writeEEPROMLine(uint16_t n) {
     return 2; // 2 = end of valid EEPROM records (not a failure)
   }
 
-
   ts = RtcDateTime(seconds2000);
 
   int16_t* readings = (int16_t*)&pageBuf[4];
 
-  uint32_t status =
-    ((uint32_t)(uint16_t)readings[MAX_SENSOR_READINGS + 1]) |
-    (((uint32_t)(uint16_t)readings[MAX_SENSOR_READINGS + 2]) << 16);
+  uint32_t status = ((uint32_t)(uint16_t)readings[MAX_SENSOR_READINGS + 1]) |
+                    (((uint32_t)(uint16_t)readings[MAX_SENSOR_READINGS + 2]) << 16);
 
   uint8_t sentFlag = (pageBuf[EEPROM_SENT_FLAG_OFFSET] == FLAG_SENT);
 
@@ -689,11 +676,7 @@ bool markEepromSentByTimestamp(uint32_t secondsSince2000) {
 
     if (ts == secondsSince2000) {
       if (pageBuf[EEPROM_SENT_FLAG_OFFSET] == FLAG_NOT_SENT) {
-        i2c_eeprom_write_byte(
-          EEPROM_ADDRESS,
-          addr + EEPROM_SENT_FLAG_OFFSET,
-          FLAG_SENT
-        );
+        i2c_eeprom_write_byte(EEPROM_ADDRESS, addr + EEPROM_SENT_FLAG_OFFSET, FLAG_SENT);
       }
       return true;
     }
@@ -732,7 +715,8 @@ bool csvLineToJson(const String& line, String& jsonOut, uint32_t& outSeconds2000
       sent = token.toInt();
 
     field++;
-    if (idx == -1) break;
+    if (idx == -1)
+      break;
     start = idx + 1;
   }
 
@@ -740,8 +724,7 @@ bool csvLineToJson(const String& line, String& jsonOut, uint32_t& outSeconds2000
     return false;
 
   StaticJsonDocument<512> doc;
-  uint64_t tsUnix =
-    ((uint64_t)seconds2000 + UNIX_OFFSET_2000 + LOCAL_TZ_OFFSET_SEC) * 1000ULL;
+  uint64_t tsUnix = ((uint64_t)seconds2000 + UNIX_OFFSET_2000 + LOCAL_TZ_OFFSET_SEC) * 1000ULL;
 
   doc["ts"] = tsUnix;
 
@@ -790,7 +773,8 @@ bool processCsvFile(const char* filename) {
   while (inFile.available()) {
     int c = inFile.read();
 
-    if (c == '\r') continue;
+    if (c == '\r')
+      continue;
     if (c == '\n') {
       String json;
       uint32_t sec2000 = 0;

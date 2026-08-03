@@ -10,8 +10,8 @@
  */
 
 #pragma once
-#include <Arduino.h>
 #include "log.h"
+#include <Arduino.h>
 
 /** Indicates if a BLE client is currently connected. */
 extern bool bleDeviceConnected;
@@ -30,13 +30,12 @@ extern BLECharacteristic* pNotifyCharacteristic;
 /** Flag indicating active real-time sensor streaming requested by "Send" command. */
 extern bool bleRealtimeSendActive;
 
-
 /** Set by BLE disconnect callback when advertising needs to be safely restarted from loop(). */
 extern bool bleRestartAdvertisingRequested;
 
-/** Set to true on first BLE connection; used to differentiate "waiting" vs "reconnection" log messages. */
+/** Set to true on first BLE connection; used to differentiate "waiting" vs "reconnection" log
+ * messages. */
 extern bool bleWasEverConnected;
-
 
 /**
  * @brief Starts BLE stack, initializes advertising and enables write/notify characteristic.
@@ -71,4 +70,3 @@ void bleProcessLedBlinks();
  * @param cmd Command string received over BLE.
  */
 void processCommand(const String& cmd);
-

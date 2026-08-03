@@ -18,10 +18,7 @@
  * @param data Pointer to data buffer to write.
  * @param length Number of bytes to write (typically page size).
  */
-void i2c_eeprom_write_page(int deviceaddress,
-                           unsigned int eeaddresspage,
-                           byte* data,
-                           byte length);
+void i2c_eeprom_write_page(int deviceaddress, unsigned int eeaddresspage, byte* data, byte length);
 
 /**
  * @brief Reads a single byte from I2C EEPROM.
@@ -56,7 +53,4 @@ void resetEEPromHeader(int deviceaddress);
  * @param buffer Output buffer to store bytes.
  * @param length Number of bytes to read.
  */
-void i2c_eeprom_read_buffer(int deviceaddress,
-                            uint16_t eeaddress,
-                            byte *buffer,
-                            int length);
+void i2c_eeprom_read_buffer(int deviceaddress, uint16_t eeaddress, byte* buffer, int length);

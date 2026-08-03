@@ -14,29 +14,29 @@
 #ifdef GPRS_MODULE
 #include "utilities.h"
 #endif
-#include "sensor_engine.h"
 #include "ble_manager.h"
-#include "modem_mqtt.h"
-#include "measurement_storage.h"
 #include "eeprom_i2c.h"
 #include "error_sensor.h"
-#include "rtc_utils.h"
+#include "measurement_storage.h"
+#include "modem_mqtt.h"
 #include "power_sleep.h"
+#include "rtc_utils.h"
+#include "sensor_engine.h"
 
 /* -------------------------- Dependencies --------------------------- */
 
 #include <Arduino.h>
-#include <Wire.h>
-#include <RtcDS3231.h>
 #include <EEPROM.h>
+#include <RtcDS3231.h>
+#include <Wire.h>
 
 #ifdef SD_MODULE
 #include <SPI.h>
 #endif
 
+#include <driver/gpio.h>
 #include <esp_bt.h>
 #include <esp_task_wdt.h>
-#include <driver/gpio.h>
 #include <string.h>
 
 #ifdef GPRS_MODULE
@@ -47,10 +47,10 @@
 
 /* ------------------------- BLE Includes ---------------------------- */
 
+#include <BLE2902.h>
 #include <BLEDevice.h>
 #include <BLEServer.h>
 #include <BLEUtils.h>
-#include <BLE2902.h>
 
 /* ------------------------- Conditional Includes -------------------- */
 
@@ -59,9 +59,9 @@
 #endif
 
 #ifdef GPRS_MODULE
-#include <TinyGsmClient.h>
 #include <ESP_SSLClient.h>
 #include <PubSubClient.h>
+#include <TinyGsmClient.h>
 #endif
 
 /* --------------------------- BLE Status ---------------------------- */
@@ -72,88 +72,89 @@ uint64_t device_ID = ESP.getEfuseMac();
 
 /* ------------------------------ Pins ------------------------------- */
 
-#define SerialMon  Serial
-#define SerialAT   Serial1
+#define SerialMon Serial
+#define SerialAT Serial1
 
 /* --------------------------- Modem/Network ------------------------- */
 
 #ifdef GPRS_MODULE
-#define TINY_GSM_DEBUG      SerialMon
-#define TINY_GSM_USE_GPRS   true
-#define TINY_GSM_USE_WIFI   false
+#define TINY_GSM_DEBUG SerialMon
+#define TINY_GSM_USE_GPRS true
+#define TINY_GSM_USE_WIFI false
 
 #define GSM_PIN ""
 
-#define TINY_GSM_RX_BUFFER           1024
+#define TINY_GSM_RX_BUFFER 1024
 #define MODEM_POWERON_PULSE_WIDTH_MS 100
 
 #if TINY_GSM_USE_GPRS && not defined TINY_GSM_MODEM_HAS_GPRS
-  #undef  TINY_GSM_USE_GPRS
-  #undef  TINY_GSM_USE_WIFI
-  #define TINY_GSM_USE_GPRS false
-  #define TINY_GSM_USE_WIFI true
+#undef TINY_GSM_USE_GPRS
+#undef TINY_GSM_USE_WIFI
+#define TINY_GSM_USE_GPRS false
+#define TINY_GSM_USE_WIFI true
 #endif
 
 #if TINY_GSM_USE_WIFI && not defined TINY_GSM_MODEM_HAS_WIFI
-  #undef  TINY_GSM_USE_GPRS
-  #undef  TINY_GSM_USE_WIFI
-  #define TINY_GSM_USE_GPRS true
-  #define TINY_GSM_USE_WIFI false
+#undef TINY_GSM_USE_GPRS
+#undef TINY_GSM_USE_WIFI
+#define TINY_GSM_USE_GPRS true
+#define TINY_GSM_USE_WIFI false
 #endif
 
 #ifdef DUMP_AT_COMMANDS
-  #include <StreamDebugger.h>
-  StreamDebugger debugger(SerialAT, SerialMon);
-  TinyGsm        modem(debugger);
+#include <StreamDebugger.h>
+StreamDebugger debugger(SerialAT, SerialMon);
+TinyGsm modem(debugger);
 #else
-  TinyGsm        modem(SerialAT);
+TinyGsm modem(SerialAT);
 #endif
 
 TinyGsmClient gsmClient(modem);
-PubSubClient  mqtt(gsmClient);
+PubSubClient mqtt(gsmClient);
 #endif /* GPRS_MODULE */
 
 /* ---------------------------- SD ---------------------------------- */
 
 #ifdef SD_MODULE
-SdFat   SD;
-SdFile  sdFile;
+SdFat SD;
+SdFile sdFile;
 SPIClass sdSPI(HSPI);
 #endif
 
 /* ------------------------------ RTC -------------------------------- */
 
 RtcDS3231<TwoWire> rtc(Wire);
-RtcDateTime        rtcNow;
-char               dateStr[20];
+RtcDateTime rtcNow;
+char dateStr[20];
 
 /* ----------------------------- Globals ----------------------------- */
 
-RTC_DATA_ATTR int      bootCount       = 0;
+RTC_DATA_ATTR int bootCount = 0;
 RTC_DATA_ATTR uint16_t eepromWritePage = 0;
-RTC_DATA_ATTR uint8_t  failedTransmissionCount = 0;
-RTC_DATA_ATTR bool     forceModemReset = false;
+RTC_DATA_ATTR uint8_t failedTransmissionCount = 0;
+RTC_DATA_ATTR bool forceModemReset = false;
 
-bool measureDone      = false;
-bool bluetoothDone    = false;
-bool gprsDone         = false;
-bool mqttAvailable    = false;
-bool deviceConnected  = false;
-bool readyForSleep    = false;
-bool firstRun         = false;
+bool measureDone = false;
+bool bluetoothDone = false;
+bool gprsDone = false;
+bool mqttAvailable = false;
+bool deviceConnected = false;
+bool readyForSleep = false;
+bool firstRun = false;
 
-uint32_t startMillis  = 0;
+uint32_t startMillis = 0;
+bool x = false;
 
 volatile uint16_t interruptCount = 0;
-volatile bool     interruptFlag  = false;
+volatile bool interruptFlag = false;
 
-byte      eepromPageBuf[EEPROM_PAGE_SIZE];
-bool      needFlushToSD = false;
+byte eepromPageBuf[EEPROM_PAGE_SIZE];
+bool needFlushToSD = false;
 
-char      csvFilename[24];
-bool      fileOpen = false;
+char csvFilename[24];
+bool fileOpen = false;
 
-String    payload = "";
+String payload = "";
 
 /* ------------------------- Config Structure ------------------------ */
 
@@ -170,7 +171,7 @@ unsigned long bleStartTime = 0;
 bool commandMode = false;
 unsigned long commandStart = 0;
 
-BLEServer*        pServer        = nullptr;
+BLEServer* pServer = nullptr;
 BLECharacteristic* pCharacteristic = nullptr;
 
 /* ---------------------------------------------------------------- */
@@ -194,9 +195,8 @@ void setup() {
   // Always initialize Serial so Log()/Logln()/Logf() work regardless of DEBUG
   Serial.begin(115200);
 
-
-  // Initialize Task Watchdog Timer (30s) for hardware auto-recovery
-  #if defined(ESP_IDF_VERSION_MAJOR) && (ESP_IDF_VERSION_MAJOR >= 5)
+// Initialize Task Watchdog Timer (30s) for hardware auto-recovery
+#if defined(ESP_IDF_VERSION_MAJOR) && (ESP_IDF_VERSION_MAJOR >= 5)
   esp_task_wdt_config_t wdt_config = {
       .timeout_ms = 30000,
       .idle_core_mask = (1 << portNUM_PROCESSORS) - 1,
@@ -204,10 +204,10 @@ void setup() {
   };
   esp_task_wdt_reconfigure(&wdt_config);
   esp_task_wdt_add(NULL);
-  #else
+#else
   esp_task_wdt_init(30, true);
   esp_task_wdt_add(NULL);
-  #endif
+#endif
 
   Wire.begin(I2C_SDA_PIN, I2C_SCL_PIN);
 
@@ -217,7 +217,8 @@ void setup() {
     Wire.beginTransmission(address);
     if (Wire.endTransmission() == 0) {
       Log("Found I2C device at 0x");
-      if (address < 16) Log("0");
+      if (address < 16)
+        Log("0");
       Logln(String(address, HEX).c_str());
     }
   }
@@ -226,7 +227,6 @@ void setup() {
 #ifdef EEPROM_USE_WIRE1
   Wire1.begin(I2C_EEPROM_SDA_PIN, I2C_EEPROM_SCL_PIN);
 #endif
-
 
   // Load config from EEPROM
   EEPROM.begin(sizeof(ModuleConfig));
@@ -245,8 +245,8 @@ void setup() {
 #ifdef SD_MODULE
 #if SD_EN_PIN != -1
   pinMode(SD_EN_PIN, OUTPUT);
-  digitalWrite(SD_EN_PIN, LOW);   // active-low enable
-  delay(10);                       // let SD module power stabilize
+  digitalWrite(SD_EN_PIN, LOW); // active-low enable
+  delay(10);                    // let SD module power stabilize
 #endif
   sdSPI.begin(SD_PIN_SCLK, SD_PIN_MISO, SD_PIN_MOSI, SD_PIN_CS);
 #endif
@@ -257,9 +257,7 @@ void setup() {
 #ifdef DEBUG
   Serial.println();
   Serial.printf("WELCOME TO %s ", N_LOGGER_DEVICE_NAME);
-  Serial.printf("ChipID: %04X%08X\n",
-                (uint16_t)(device_ID >> 32),
-                (uint32_t)device_ID);
+  Serial.printf("ChipID: %04X%08X\n", (uint16_t)(device_ID >> 32), (uint32_t)device_ID);
 #ifdef SD_MODULE
   Serial.print("SD");
 #endif
@@ -308,8 +306,7 @@ void setup() {
     }
 
     // Measurement window
-    if (moduleCfg.measure_time > 0 &&
-        (rtcNow.Minute() % moduleCfg.measure_time == 0)) {
+    if (moduleCfg.measure_time > 0 && (rtcNow.Minute() % moduleCfg.measure_time == 0)) {
 #ifdef DEBUG
       Logln("SAVE MEASURE LEVEL IN EEPROM");
 #endif
@@ -318,8 +315,7 @@ void setup() {
     }
 
     /* Bluetooth window — forced ON if streaming is active */
-    if (moduleCfg.bluetooth_time > 0 &&
-        (rtcNow.Minute() % moduleCfg.bluetooth_time == 0)) {
+    if (moduleCfg.bluetooth_time > 0 && (rtcNow.Minute() % moduleCfg.bluetooth_time == 0)) {
 #ifdef DEBUG
       Logln("TRY TO CONNECT TO BLUETOOTH");
 #endif
@@ -333,8 +329,7 @@ void setup() {
     }
 
 #ifdef GPRS_MODULE
-    if (moduleCfg.GPRS_time > 0 &&
-        (rtcNow.Minute() % moduleCfg.GPRS_time == 0)) {
+    if (moduleCfg.GPRS_time > 0 && (rtcNow.Minute() % moduleCfg.GPRS_time == 0)) {
 #ifdef DEBUG
       Logln("TRY TO CONNECT TO GPRS AND SEND STORED DATA");
 #endif
@@ -395,7 +390,7 @@ void setup() {
     if (dumpEEPROM()) {
       resetEEPromHeader(EEPROM_ADDRESS);
 #ifdef DEBUG
-    Logln("- EEPROM flushed.");
+      Logln("- EEPROM flushed.");
 #endif
     } else {
 #ifdef DEBUG
@@ -522,13 +517,15 @@ void loop() {
       }
     }
 
-    // If streaming was enabled but client stays disconnected past active window, disable streaming mode
+    // If streaming was enabled but client stays disconnected past active window, disable
+    // streaming mode
     if (bleStreamingActive && !bleDeviceConnected && (millis() - bleStartTime > BLE_ACTIVE_TIME)) {
       Logln("BLE streaming active but no client connected. Disabling streaming mode.");
       bleStreamingActive = false;
     }
 
-    if (!bleStreamingActive && !bleRealtimeSendActive && !bleDeviceConnected && (millis() - bleStartTime > BLE_ACTIVE_TIME)) {
+    if (!bleStreamingActive && !bleRealtimeSendActive && !bleDeviceConnected &&
+        (millis() - bleStartTime > BLE_ACTIVE_TIME)) {
       Logln(" BLE time expired, entering sleep...");
       stopBLE();
       prepareForDeepSleep(moduleCfg.measure_time);
@@ -540,5 +537,3 @@ void loop() {
 
   delay(50);
 }
-
-

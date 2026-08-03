@@ -12,8 +12,8 @@
  */
 
 #include "sensor_engine.h"
-#include "n_logger_config.h"
 #include "log.h"
+#include "n_logger_config.h"
 
 #include <HardwareSerial.h>
 #include <esp32-hal-adc.h>
@@ -196,21 +196,21 @@ static int16_t radarReadSingle() {
 #ifdef DEBUG
     Logf("[RADAR][ERR] Timeout / no response: %s\n", result.error);
 #endif
-    return -2;  // timeout or comm error
+    return -2; // timeout or comm error
   }
 
   if (result.isException) {
 #ifdef DEBUG
     Logf("[RADAR][ERR] Modbus exception %d: %s\n", result.exceptionCode, result.error);
 #endif
-    return -5;  // Modbus exception
+    return -5; // Modbus exception
   }
 
   if (result.count < 1) {
 #ifdef DEBUG
     Logf("[RADAR][ERR] Short response: %u register(s) received, expected 1\n", result.count);
 #endif
-    return -3;  // short response
+    return -3; // short response
   }
 
   int16_t val = static_cast<int16_t>(result.values[0]);
@@ -283,7 +283,8 @@ static int16_t soilReadBoth(int16_t& moisture, int16_t& temperature) {
 #endif
 
   // Read 2 registers starting at 0x0000 (moisture + temperature)
-  auto result = modbus.readRegisters(SOIL_SLAVE_ID, 0x03, SOIL_MODBUS_START_ADDR, SOIL_MODBUS_READ_COUNT);
+  auto result =
+      modbus.readRegisters(SOIL_SLAVE_ID, 0x03, SOIL_MODBUS_START_ADDR, SOIL_MODBUS_READ_COUNT);
 
   if (!result.success) {
 #ifdef DEBUG
@@ -366,7 +367,8 @@ static int16_t soil5ReadAll(int16_t* values) {
   modbus.begin(SOIL5_BAUD, SOIL5_RX_PIN, SOIL5_TX_PIN);
 
   // Read 7 registers starting at 0x0000
-  auto result = modbus.readRegisters(SOIL5_SLAVE_ID, 0x03, SOIL5_MODBUS_START_ADDR, SOIL5_MODBUS_READ_COUNT);
+  auto result =
+      modbus.readRegisters(SOIL5_SLAVE_ID, 0x03, SOIL5_MODBUS_START_ADDR, SOIL5_MODBUS_READ_COUNT);
 
   if (!result.success) {
     return -2;
@@ -422,8 +424,8 @@ static uint16_t batteryAdcRead() {
 static void ina226WriteRegister(uint8_t reg, uint16_t value) {
   Wire.beginTransmission(INA226_ADDR);
   Wire.write(reg);
-  Wire.write((uint8_t)(value >> 8));    // MSB
-  Wire.write((uint8_t)(value & 0xFF));  // LSB
+  Wire.write((uint8_t)(value >> 8));   // MSB
+  Wire.write((uint8_t)(value & 0xFF)); // LSB
   Wire.endTransmission();
 }
 
@@ -481,22 +483,22 @@ void ina226PowerDown() {
 void sensorReadAll(TelemetryPayload& tp) {
   int readingIndex = 0;
 
-  /* ---- MaxBotix UART ---- */
-  #ifdef SENSOR_MAXBOTIX_UART
+/* ---- MaxBotix UART ---- */
+#ifdef SENSOR_MAXBOTIX_UART
   {
     // Power on — cold-start cycle to ensure clean sensor reset after deep sleep
     pinMode(MAXBOTIX_PWR_PIN, OUTPUT);
     gpio_hold_dis((gpio_num_t)MAXBOTIX_PWR_PIN);
-    digitalWrite(MAXBOTIX_PWR_PIN, LOW);   // Force OFF
+    digitalWrite(MAXBOTIX_PWR_PIN, LOW); // Force OFF
 #ifdef DEBUG
     Logf("[MAXBOTIX][DBG] Cold power cycle: OFF for 100ms\n");
 #endif
-    delay(100);                             // Discharge period
-    digitalWrite(MAXBOTIX_PWR_PIN, HIGH);  // Power ON
+    delay(100);                           // Discharge period
+    digitalWrite(MAXBOTIX_PWR_PIN, HIGH); // Power ON
 #ifdef DEBUG
     Logf("[MAXBOTIX][DBG] Power ON, waiting %dms warmup\n", MAXBOTIX_WARMUP_MS);
 #endif
-    delay(MAXBOTIX_WARMUP_MS);             // Stabilization
+    delay(MAXBOTIX_WARMUP_MS); // Stabilization
 
     // Init UART
     // TX pin set to -1 because MaxBotix is RX-only -- it only transmits data.
@@ -504,7 +506,8 @@ void sensorReadAll(TelemetryPayload& tp) {
     maxbotixSerial.begin(9600, SERIAL_8N1, MAXBOTIX_RX_PIN, -1);
 
     // Clear startup noise
-    while (maxbotixSerial.available()) maxbotixSerial.read();
+    while (maxbotixSerial.available())
+      maxbotixSerial.read();
 
     // Read samples
     uint8_t nread = 0;
@@ -519,7 +522,8 @@ void sensorReadAll(TelemetryPayload& tp) {
 #endif
         tp.sensorReadings[readingIndex++] = sample;
         nread++;
-        if (nread < MAXBOTIX_NUM_READINGS) delay(120);
+        if (nread < MAXBOTIX_NUM_READINGS)
+          delay(120);
       } else {
 #ifdef DEBUG
         Logf("[MAXBOTIX] Sample %d/%d: error %d\n", nread + 1, MAXBOTIX_NUM_READINGS, sample);
@@ -540,25 +544,24 @@ void sensorReadAll(TelemetryPayload& tp) {
     maxbotixSerial.end();
     digitalWrite(MAXBOTIX_PWR_PIN, LOW);
   }
-  #endif /* SENSOR_MAXBOTIX_UART */
+#endif /* SENSOR_MAXBOTIX_UART */
 
-  /* ---- Water / IR Surface Temperature (MLX90614) ---- */
-  #if defined(SENSOR_WATER_TEMP) || defined(SENSOR_MLX90614)
+/* ---- Water / IR Surface Temperature (MLX90614) ---- */
+#if defined(SENSOR_WATER_TEMP) || defined(SENSOR_MLX90614)
   {
-    #if WATER_TEMP_PWR_PIN != -1
+#if WATER_TEMP_PWR_PIN != -1
     pinMode(WATER_TEMP_PWR_PIN, OUTPUT);
     gpio_hold_dis((gpio_num_t)WATER_TEMP_PWR_PIN);
     digitalWrite(WATER_TEMP_PWR_PIN, HIGH); // Power ON (GPIO 27 HIGH)
     delay(WATER_TEMP_WARMUP_MS);
-    #endif
+#endif
 
     int16_t objTemp = mlx90614ReadTemp(0x07); // RAM 0x07: Object Temp
     int16_t ambTemp = mlx90614ReadTemp(0x06); // RAM 0x06: Ambient Temp
 
     if (objTemp > -900 && ambTemp > -900) {
 #ifdef DEBUG
-      Logf("[MLX90614] Object: %d.%d C, Ambient: %d.%d C\n",
-           objTemp / 10, abs(objTemp % 10),
+      Logf("[MLX90614] Object: %d.%d C, Ambient: %d.%d C\n", objTemp / 10, abs(objTemp % 10),
            ambTemp / 10, abs(ambTemp % 10));
 #endif
       tp.sensorReadings[readingIndex++] = objTemp;
@@ -571,12 +574,11 @@ void sensorReadAll(TelemetryPayload& tp) {
       tp.sensorReadings[readingIndex++] = -999;
       tp.status = changeBit(tp.status, STATUS_WATER_LEVEL_SENSOR_BIT, true);
     }
-
   }
-  #endif /* SENSOR_WATER_TEMP || SENSOR_MLX90614 */
+#endif /* SENSOR_WATER_TEMP || SENSOR_MLX90614 */
 
-  /* ---- Radar (Modbus RTU, direct UART) ---- */
-  #ifdef SENSOR_RADAR
+/* ---- Radar (Modbus RTU, direct UART) ---- */
+#ifdef SENSOR_RADAR
   {
     // Power on
     pinMode(RADAR_PWR_PIN, OUTPUT);
@@ -587,7 +589,8 @@ void sensorReadAll(TelemetryPayload& tp) {
     radarSerial.begin(RADAR_BAUD, SERIAL_8N1, RADAR_RX_PIN, RADAR_TX_PIN);
 
     // Clear startup noise
-    while (radarSerial.available()) radarSerial.read();
+    while (radarSerial.available())
+      radarSerial.read();
 
     // Read samples
     uint8_t nread = 0;
@@ -601,7 +604,8 @@ void sensorReadAll(TelemetryPayload& tp) {
 #endif
         tp.sensorReadings[readingIndex++] = sample;
         nread++;
-        if (nread < RADAR_NUM_READINGS) delay(200);
+        if (nread < RADAR_NUM_READINGS)
+          delay(200);
       } else {
 #ifdef DEBUG
         Logf("[RADAR] Sample %d/%d: error %d\n", nread + 1, RADAR_NUM_READINGS, sample);
@@ -622,17 +626,17 @@ void sensorReadAll(TelemetryPayload& tp) {
     radarSerial.end();
     digitalWrite(RADAR_PWR_PIN, LOW);
   }
-  #endif /* SENSOR_RADAR */
+#endif /* SENSOR_RADAR */
 
-/* ---- 3-Probe Soil Sensor (Modbus RTU, RS-485) ---- */
-  #ifdef SENSOR_SOIL_3TIP
+  /* ---- 3-Probe Soil Sensor (Modbus RTU, RS-485) ---- */
+#ifdef SENSOR_SOIL_3TIP
   {
-    // Enable sensor (if EN pin configured)
-    #if SOIL_EN_PIN != -1
+// Enable sensor (if EN pin configured)
+#if SOIL_EN_PIN != -1
     pinMode(SOIL_EN_PIN, OUTPUT);
     digitalWrite(SOIL_EN_PIN, SOIL_EN_ACTIVE_HIGH ? HIGH : LOW);
     delay(10);
-    #endif
+#endif
 
     // Power on
     pinMode(SOIL_PWR_PIN, OUTPUT);
@@ -643,7 +647,8 @@ void sensorReadAll(TelemetryPayload& tp) {
     soilSerial.begin(SOIL_BAUD, SERIAL_8N1, SOIL_RX_PIN, SOIL_TX_PIN);
 
     // Clear startup noise
-    while (soilSerial.available()) soilSerial.read();
+    while (soilSerial.available())
+      soilSerial.read();
 
     // Read samples — each sample is a pair (moisture, temperature)
     uint8_t nread = 0;
@@ -657,12 +662,14 @@ void sensorReadAll(TelemetryPayload& tp) {
 
       if (status == 0) {
 #ifdef DEBUG
-        Logf("[SOIL] Sample %d/%d: moisture=%d, temp=%d\n", nread + 1, SOIL_SAMPLE_COUNT, moisture, temperature);
+        Logf("[SOIL] Sample %d/%d: moisture=%d, temp=%d\n", nread + 1, SOIL_SAMPLE_COUNT, moisture,
+             temperature);
 #endif
         tp.sensorReadings[readingIndex++] = moisture;
         tp.sensorReadings[readingIndex++] = temperature;
         nread++;
-        if (nread < SOIL_SAMPLE_COUNT) delay(200);
+        if (nread < SOIL_SAMPLE_COUNT)
+          delay(200);
       } else {
 #ifdef DEBUG
         Logf("[SOIL] Sample %d/%d: error %d\n", nread + 1, SOIL_SAMPLE_COUNT, status);
@@ -683,22 +690,22 @@ void sensorReadAll(TelemetryPayload& tp) {
     soilSerial.end();
     digitalWrite(SOIL_PWR_PIN, LOW);
 
-    // Disable sensor (if EN pin configured)
-    #if SOIL_EN_PIN != -1
+// Disable sensor (if EN pin configured)
+#if SOIL_EN_PIN != -1
     digitalWrite(SOIL_EN_PIN, SOIL_EN_ACTIVE_HIGH ? LOW : HIGH);
-    #endif
+#endif
   }
-  #endif /* SENSOR_SOIL_3TIP */
+#endif /* SENSOR_SOIL_3TIP */
 
-/* ---- 5-Probe Soil Sensor (Modbus RTU, RS-485) ---- */
-  #ifdef SENSOR_SOIL_5TIP
+  /* ---- 5-Probe Soil Sensor (Modbus RTU, RS-485) ---- */
+#ifdef SENSOR_SOIL_5TIP
   {
-    // Enable sensor (if EN pin configured)
-    #if SOIL5_EN_PIN != -1
+// Enable sensor (if EN pin configured)
+#if SOIL5_EN_PIN != -1
     pinMode(SOIL5_EN_PIN, OUTPUT);
     digitalWrite(SOIL5_EN_PIN, SOIL5_EN_ACTIVE_HIGH ? HIGH : LOW);
     delay(10);
-    #endif
+#endif
 
     // Power on
     pinMode(SOIL5_PWR_PIN, OUTPUT);
@@ -709,7 +716,8 @@ void sensorReadAll(TelemetryPayload& tp) {
     soil5Serial.begin(SOIL5_BAUD, SERIAL_8N1, SOIL5_RX_PIN, SOIL5_TX_PIN);
 
     // Clear startup noise
-    while (soil5Serial.available()) soil5Serial.read();
+    while (soil5Serial.available())
+      soil5Serial.read();
 
     // Read samples — each sample reads all 7 registers
     uint8_t nread = 0;
@@ -725,7 +733,8 @@ void sensorReadAll(TelemetryPayload& tp) {
           tp.sensorReadings[readingIndex++] = values[i];
         }
         nread++;
-        if (nread < SOIL5_SAMPLE_COUNT) delay(200);
+        if (nread < SOIL5_SAMPLE_COUNT)
+          delay(200);
       } else {
         delay(100);
       }
@@ -740,27 +749,27 @@ void sensorReadAll(TelemetryPayload& tp) {
     soil5Serial.end();
     digitalWrite(SOIL5_PWR_PIN, LOW);
 
-    // Disable sensor (if EN pin configured)
-    #if SOIL5_EN_PIN != -1
+// Disable sensor (if EN pin configured)
+#if SOIL5_EN_PIN != -1
     digitalWrite(SOIL5_EN_PIN, SOIL5_EN_ACTIVE_HIGH ? LOW : HIGH);
-    #endif
+#endif
   }
-  #endif /* SENSOR_SOIL_5TIP */
+#endif /* SENSOR_SOIL_5TIP */
 
-  /* ---- Battery ADC ---- */
-  #ifdef SENSOR_BATTERY_ADC
+/* ---- Battery ADC ---- */
+#ifdef SENSOR_BATTERY_ADC
   {
     tp.battery = batteryAdcRead();
     // Battery reading also maps into sensorReadings for EEPROM/CSV
     tp.sensorReadings[readingIndex++] = (int16_t)(tp.battery & 0xFFFF);
   }
-  #endif /* SENSOR_BATTERY_ADC */
+#endif /* SENSOR_BATTERY_ADC */
 
-  /* ---- INA226 (I2C voltage monitor, triggered mode) ---- */
-  #ifdef SENSOR_INA226
+/* ---- INA226 (I2C voltage monitor, triggered mode) ---- */
+#ifdef SENSOR_INA226
   {
     // Trigger bus-voltage conversion (64-avg, 1.1ms each, bus continuous mode)
-    ina226WriteRegister(0x00, 0x4726);  // MODE=110 (bus continuous), AVG=64, VBUSCT=1.1ms
+    ina226WriteRegister(0x00, 0x4726); // MODE=110 (bus continuous), AVG=64, VBUSCT=1.1ms
     delay(INA226_WARMUP_MS);
 
     uint32_t mv = ina226ReadBusVoltage();
@@ -770,7 +779,7 @@ void sensorReadAll(TelemetryPayload& tp) {
     tp.battery = mv;
     tp.sensorReadings[readingIndex++] = (int16_t)(mv & 0xFFFF);
   }
-  #endif /* SENSOR_INA226 */
+#endif /* SENSOR_INA226 */
 
   /* Pad remaining slots (if any sensor had fewer readings than expected) */
   while (readingIndex < MAX_SENSOR_READINGS) {
@@ -794,7 +803,8 @@ int16_t readPrimarySensorRealtime() {
     digitalWrite(MAXBOTIX_PWR_PIN, HIGH);
     delay(MAXBOTIX_WARMUP_MS);
     maxbotixSerial.begin(9600, SERIAL_8N1, MAXBOTIX_RX_PIN, -1);
-    while (maxbotixSerial.available()) maxbotixSerial.read();
+    while (maxbotixSerial.available())
+      maxbotixSerial.read();
     realtimeSensorInit = true;
   }
   val = maxbotixReadSingle();
@@ -814,14 +824,15 @@ int16_t readPrimarySensorRealtime() {
 }
 
 void stopPrimarySensorRealtime() {
-  if (!realtimeSensorInit) return;
+  if (!realtimeSensorInit)
+    return;
 
 #ifdef SENSOR_MAXBOTIX_UART
   maxbotixSerial.end();
-  //digitalWrite(MAXBOTIX_PWR_PIN, LOW);
+  // digitalWrite(MAXBOTIX_PWR_PIN, LOW);
 #elif defined(SENSOR_RADAR)
   radarSerial.end();
-  //digitalWrite(RADAR_PWR_PIN, LOW);
+  // digitalWrite(RADAR_PWR_PIN, LOW);
 #endif
 
   realtimeSensorInit = false;

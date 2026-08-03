@@ -70,10 +70,16 @@ bool publishJsonLineToTB(const String& jsonOut);
 
 /* Stub implementations for when GPRS module is disabled */
 
-static inline bool initA7670() { return false; }
+static inline bool initA7670() {
+  return false;
+}
 static inline void sleepA7670() {}
-static inline bool connectMQTT(uint8_t maxAttempts = 3, uint16_t delayMs = 2000) { return false; }
+static inline bool connectMQTT(uint8_t maxAttempts = 3, uint16_t delayMs = 2000) {
+  return false;
+}
 static inline void processQueuedRpcCommands() {}
-static inline bool publishJsonLineToTB(const String& jsonOut) { return false; }
+static inline bool publishJsonLineToTB(const String& jsonOut) {
+  return false;
+}
 
 #endif // GPRS_MODULE

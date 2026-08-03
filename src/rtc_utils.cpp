@@ -8,20 +8,20 @@
 
 #include "rtc_utils.h"
 
-#include <Wire.h>
-#include <RtcDS3231.h>
 #include "utilities.h"
+#include <RtcDS3231.h>
+#include <Wire.h>
 
 /* --------------------------------------------------------------------------
  *  External variables defined in main program
  * -------------------------------------------------------------------------- */
 
 extern RtcDS3231<TwoWire> rtc;
-extern RtcDateTime        rtcNow;
-extern char               dateStr[20];
+extern RtcDateTime rtcNow;
+extern char dateStr[20];
 
 #ifndef countof
-  #define countof(a) (sizeof(a) / sizeof(a[0]))
+#define countof(a) (sizeof(a) / sizeof(a[0]))
 #endif
 
 /* --------------------------------------------------------------------------
@@ -34,12 +34,8 @@ extern char               dateStr[20];
  * Format example: "2025/12/05 21:37:10"
  */
 void formatDateTime(const RtcDateTime& dt) {
-  snprintf_P(
-    dateStr, countof(dateStr),
-    PSTR("%04u/%02u/%02u %02u:%02u:%02u"),
-    dt.Year(), dt.Month(), dt.Day(),
-    dt.Hour(), dt.Minute(), dt.Second()
-  );
+  snprintf_P(dateStr, countof(dateStr), PSTR("%04u/%02u/%02u %02u:%02u:%02u"), dt.Year(),
+             dt.Month(), dt.Day(), dt.Hour(), dt.Minute(), dt.Second());
 }
 
 /* --------------------------------------------------------------------------
@@ -63,12 +59,7 @@ void configureAlarm(int minutes) {
   // Align the minute field to the configured interval
   int adjust = alarmTime.Minute() % minutes;
 
-  DS3231AlarmTwo alarm2(
-    0,
-    0,
-    alarmTime.Minute() - adjust,
-    DS3231AlarmTwoControl_MinutesMatch
-  );
+  DS3231AlarmTwo alarm2(0, 0, alarmTime.Minute() - adjust, DS3231AlarmTwoControl_MinutesMatch);
 
   rtc.SetAlarmTwo(alarm2);
 

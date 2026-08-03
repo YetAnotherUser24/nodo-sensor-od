@@ -20,14 +20,14 @@
  * @brief Prints to Serial AND (when streaming is active and BLE connected)
  *        pushes via BLE notify(). Always sends to Serial.
  */
-void Log(const char *s);
+void Log(const char* s);
 
 /**
  * @brief Same as Log() with a trailing newline.
  */
-void Logln(const char *s);
+void Logln(const char* s);
 
 /**
  * @brief printf-style output to Serial AND BLE notify().
  */
-void Logf(const char *fmt, ...);
+void Logf(const char* fmt, ...);

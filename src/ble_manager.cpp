@@ -11,18 +11,18 @@
 #include "ble_manager.h"
 
 /* ------------------------------ Includes ------------------------------ */
-#include <esp_bt.h>
+#include <BLE2902.h>
 #include <BLEDevice.h>
 #include <BLEServer.h>
 #include <BLEUtils.h>
-#include <BLE2902.h>
 #include <EEPROM.h>
-#include <Wire.h>
 #include <RtcDS3231.h>
+#include <Wire.h>
+#include <esp_bt.h>
 
-#include "n_logger_config.h"
 #include "config.h"
 #include "error_sensor.h"
+#include "n_logger_config.h"
 #include "utilities.h"
 
 /* ------------------------ External Dependencies ------------------------ */
@@ -30,19 +30,19 @@
 extern ModuleConfig moduleCfg;
 
 extern RtcDS3231<TwoWire> rtc;
-extern RtcDateTime        rtcNow;
-extern char               dateStr[20];
+extern RtcDateTime rtcNow;
+extern char dateStr[20];
 
 /** Formats RTC time into dateStr (defined in main module). */
 void formatDateTime(const RtcDateTime& dt);
 
 /* BLE globals shared with main */
-extern bool           bleActive;
-extern unsigned long  bleStartTime;
-extern bool           commandMode;
-extern unsigned long  commandStart;
+extern bool bleActive;
+extern unsigned long bleStartTime;
+extern bool commandMode;
+extern unsigned long commandStart;
 
-extern BLEServer*        pServer;
+extern BLEServer* pServer;
 extern BLECharacteristic* pCharacteristic;
 BLECharacteristic* pNotifyCharacteristic = nullptr;
 
@@ -58,9 +58,9 @@ bool bleWasEverConnected = false;
 
 /* --------------------- LED Blink State Machine ------------------------ */
 
-static uint8_t  bleLedBlinks      = 0;
+static uint8_t bleLedBlinks = 0;
 static unsigned long bleLedLastToggle = 0;
-static bool     bleLedState       = false;
+static bool bleLedState = false;
 
 /** Guard flag: true while executing inside a BLE callback (onConnect/onDisconnect/onWrite).
  *  Prevents bleNotifyIfStreaming() from calling BLE APIs (notify) from callback context,
@@ -68,14 +68,15 @@ static bool     bleLedState       = false;
 static volatile bool bleInCallback = false;
 
 void bleProcessLedBlinks() {
-  if (bleLedBlinks == 0) return;
+  if (bleLedBlinks == 0)
+    return;
   unsigned long now = millis();
 
   // First call: turn LED ON and start the 200ms timer
   if (bleLedLastToggle == 0) {
     bleLedLastToggle = now;
     bleLedState = true;
-    digitalWrite(LED_PIN, LOW);  // LED ON (active-low)
+    digitalWrite(LED_PIN, LOW); // LED ON (active-low)
     return;
   }
 
@@ -89,8 +90,8 @@ void bleProcessLedBlinks() {
       // Was OFF → turn ON, decrement blink count
       bleLedBlinks--;
       if (bleLedBlinks == 0) {
-        digitalWrite(LED_PIN, HIGH);  // ensure LED ends OFF
-        bleLedLastToggle = 0;         // reset for next command
+        digitalWrite(LED_PIN, HIGH); // ensure LED ends OFF
+        bleLedLastToggle = 0;        // reset for next command
         return;
       }
       digitalWrite(LED_PIN, LOW);
@@ -113,7 +114,7 @@ class MyCallbacks : public BLECharacteristicCallbacks {
       Log("Command received: ");
       Logln(cmd);
       bleStartTime = millis();
-      processCommand(String(cmd));  // one-time String creation, passed by value then consumed
+      processCommand(String(cmd)); // one-time String creation, passed by value then consumed
     }
     bleInCallback = false;
   }
@@ -136,7 +137,7 @@ class ServerConnectionCallbacks : public BLEServerCallbacks {
   void onDisconnect(BLEServer* server) override {
     bleInCallback = true;
     Logln("BLE: Device disconnected");
-    bool wasIntentionalStop = !bleRealtimeSendActive;  // STOP was sent before disconnect
+    bool wasIntentionalStop = !bleRealtimeSendActive; // STOP was sent before disconnect
     bleDeviceConnected = false;
     bleRealtimeSendActive = false;
     bleRestartAdvertisingRequested = true;
@@ -172,25 +173,20 @@ void startBLE() {
 
   // WRITE characteristic (beb5483e-36e1-4688-b7f5-ea07361b26a8) for commands
   pCharacteristic = pService->createCharacteristic(
-    CHARACTERISTIC_UUID,
-    BLECharacteristic::PROPERTY_READ |
-    BLECharacteristic::PROPERTY_WRITE
-  );
+      CHARACTERISTIC_UUID, BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_WRITE);
   pCharacteristic->addDescriptor(new BLE2902());
   pCharacteristic->setCallbacks(new MyCallbacks());
 
   // NOTIFY/READ characteristic (beb5483e-36e1-4688-b7f5-ea07361b26a9) for real-time measurements
-  pNotifyCharacteristic = pService->createCharacteristic(
-    CHARACTERISTIC_NOTIFY_UUID,
-    BLECharacteristic::PROPERTY_READ |
-    BLECharacteristic::PROPERTY_NOTIFY
-  );
+  pNotifyCharacteristic = pService->createCharacteristic(CHARACTERISTIC_NOTIFY_UUID,
+                                                         BLECharacteristic::PROPERTY_READ |
+                                                             BLECharacteristic::PROPERTY_NOTIFY);
   pNotifyCharacteristic->addDescriptor(new BLE2902());
 
   pService->start();
   pServer->getAdvertising()->start();
 
-  bleActive    = true;
+  bleActive = true;
   bleRestartAdvertisingRequested = false;
   bleStartTime = millis();
 
@@ -222,7 +218,7 @@ bool isBleNotifyEnabled() {
   if (pServer->getConnectedCount() == 0) {
     return false;
   }
-  BLE2902* p2902 = (BLE2902*) pNotifyCharacteristic->getDescriptorByUUID(BLEUUID((uint16_t)0x2902));
+  BLE2902* p2902 = (BLE2902*)pNotifyCharacteristic->getDescriptorByUUID(BLEUUID((uint16_t)0x2902));
   if (p2902 != nullptr && !p2902->getNotifications()) {
     return false;
   }
@@ -233,7 +229,8 @@ bool isBleNotifyEnabled() {
  * @brief Safely stops BLE advertising and clears BLE state flags without crashing.
  */
 void stopBLE() {
-  if (!bleActive) return;
+  if (!bleActive)
+    return;
   Logln("Stopping BLE...");
 
   if (pServer != nullptr) {
@@ -279,9 +276,9 @@ void processCommand(const String& cmdIn) {
     const char* p1 = strchr(c + 2, '-');
     const char* p2 = p1 ? strchr(p1 + 1, '-') : nullptr;
     if (p1 && p2) {
-      moduleCfg.measure_time   = atoi(c + 2);          // c+2 .. p1
-      moduleCfg.bluetooth_time = atoi(p1 + 1);         // p1+1 .. p2
-      moduleCfg.GPRS_time      = atoi(p2 + 1);         // p2+1 .. end
+      moduleCfg.measure_time = atoi(c + 2);    // c+2 .. p1
+      moduleCfg.bluetooth_time = atoi(p1 + 1); // p1+1 .. p2
+      moduleCfg.GPRS_time = atoi(p2 + 1);      // p2+1 .. end
 
       EEPROM.begin(sizeof(ModuleConfig));
       EEPROM.put(0, moduleCfg);
@@ -300,10 +297,10 @@ void processCommand(const String& cmdIn) {
   /* ----------------------- D-YYYY-MM-DD-HH-MM-SS ----------------------- */
   else if (len > 2 && c[0] == 'D' && c[1] == '-') {
     // Parse with pointer arithmetic: positions 2,7,10,13,16,19 are fixed
-    int year   = atoi(c + 2);
-    int month  = atoi(c + 7);
-    int day    = atoi(c + 10);
-    int hour   = atoi(c + 13);
+    int year = atoi(c + 2);
+    int month = atoi(c + 7);
+    int day = atoi(c + 10);
+    int hour = atoi(c + 13);
     int minute = atoi(c + 16);
     int second = atoi(c + 19);
 
@@ -359,10 +356,11 @@ void processCommand(const String& cmdIn) {
 /*  Serial-to-BLE streaming helpers                                       */
 /* ---------------------------------------------------------------------- */
 
-static void bleNotifyIfStreaming(const char *s) {
+static void bleNotifyIfStreaming(const char* s) {
 #if !defined(NO_BLE_STREAMING)
   // Never call BLE APIs from within BLE callbacks — that would deadlock the BLE task
-  if (bleInCallback) return;
+  if (bleInCallback)
+    return;
   if (bleStreamingActive && bleDeviceConnected && pCharacteristic != nullptr) {
     pCharacteristic->setValue((uint8_t*)s, strlen(s));
     pCharacteristic->notify();
@@ -372,7 +370,7 @@ static void bleNotifyIfStreaming(const char *s) {
 #endif
 }
 
-void Log(const char *s) {
+void Log(const char* s) {
   // When inside a BLE callback, never block on Serial (TX buffer full => BLE task deadlock)
   if (!bleInCallback || Serial.availableForWrite() > (int)strlen(s)) {
     Serial.print(s);
@@ -380,7 +378,7 @@ void Log(const char *s) {
   bleNotifyIfStreaming(s);
 }
 
-void Logln(const char *s) {
+void Logln(const char* s) {
   if (!bleInCallback || Serial.availableForWrite() > (int)(strlen(s) + 2)) {
     Serial.println(s);
   }
@@ -388,7 +386,7 @@ void Logln(const char *s) {
   bleNotifyIfStreaming("\r\n");
 }
 
-void Logf(const char *fmt, ...) {
+void Logf(const char* fmt, ...) {
   char buf[256];
   va_list args;
   va_start(args, fmt);

@@ -12,19 +12,19 @@
 #include "power_sleep.h"
 
 #include <Arduino.h>
+#include <SPI.h>
 #include <WiFi.h>
+#include <driver/gpio.h>
 #include <esp_bt.h>
 #include <esp_sleep.h>
-#include <driver/gpio.h>
-#include <SPI.h>
 
 #include "n_logger_config.h"
 #include "sensor_engine.h"
 #ifdef GPRS_MODULE
 #include "utilities.h"
 #endif
-#include "rtc_utils.h"
 #include "log.h"
+#include "rtc_utils.h"
 
 #ifdef SD_MODULE
 #include <SdFat.h>
@@ -33,9 +33,9 @@
 /* ------------------------ External Objects from main.cpp ------------------- */
 
 #ifdef SD_MODULE
-extern SdFat     SD;
-extern SdFile    sdFile;
-extern SPIClass  sdSPI;
+extern SdFat SD;
+extern SdFile sdFile;
+extern SPIClass sdSPI;
 #endif
 
 extern ModuleConfig moduleCfg;
@@ -58,7 +58,7 @@ void sdBusSuspend() {
 
 #if SD_EN_PIN != -1
   pinMode(SD_EN_PIN, OUTPUT);
-  digitalWrite(SD_EN_PIN, HIGH);  // active-low disable
+  digitalWrite(SD_EN_PIN, HIGH); // active-low disable
   gpio_hold_en((gpio_num_t)SD_EN_PIN);
 #endif
 #else
@@ -74,7 +74,7 @@ void sdBusResume() {
 #if SD_EN_PIN != -1
   gpio_hold_dis((gpio_num_t)SD_EN_PIN);
   pinMode(SD_EN_PIN, OUTPUT);
-  digitalWrite(SD_EN_PIN, LOW);   // active-low enable
+  digitalWrite(SD_EN_PIN, LOW); // active-low enable
   delay(5);
 #endif
   sdSPI.begin(SD_PIN_SCLK, SD_PIN_MISO, SD_PIN_MOSI, SD_PIN_CS);
@@ -117,13 +117,13 @@ void prepareForDeepSleep(int minutes) {
 
   digitalWrite(LED_PIN, LOW);
 
-  // Lock sensor power/control pins LOW through deep sleep.
-  // ESP32 retains OUTPUT state during deep sleep — setting pins to
-  // OUTPUT + LOW is sufficient for most scenarios.  For pins that
-  // need extra protection against leakage we additionally enable
-  // the GPIO hold function via gpio_hold_en (works on all GPIOs,
-  // not just RTC-capable ones).
-  #ifdef SENSOR_SOIL_3TIP
+// Lock sensor power/control pins LOW through deep sleep.
+// ESP32 retains OUTPUT state during deep sleep — setting pins to
+// OUTPUT + LOW is sufficient for most scenarios.  For pins that
+// need extra protection against leakage we additionally enable
+// the GPIO hold function via gpio_hold_en (works on all GPIOs,
+// not just RTC-capable ones).
+#ifdef SENSOR_SOIL_3TIP
   pinMode(SOIL_PWR_PIN, OUTPUT);
   digitalWrite(SOIL_PWR_PIN, LOW);
   gpio_hold_en((gpio_num_t)SOIL_PWR_PIN);
@@ -132,15 +132,15 @@ void prepareForDeepSleep(int minutes) {
   gpio_hold_en((gpio_num_t)SOIL_DE_RE_PIN);
   pinMode(SOIL_RX_PIN, INPUT);
   pinMode(SOIL_TX_PIN, INPUT);
-  #endif
-  #ifdef SENSOR_RADAR
+#endif
+#ifdef SENSOR_RADAR
   pinMode(RADAR_PWR_PIN, OUTPUT);
   digitalWrite(RADAR_PWR_PIN, LOW);
   gpio_hold_en((gpio_num_t)RADAR_PWR_PIN);
   pinMode(RADAR_RX_PIN, INPUT);
   pinMode(RADAR_TX_PIN, INPUT);
-  #endif
-  #ifdef SENSOR_SOIL_5TIP
+#endif
+#ifdef SENSOR_SOIL_5TIP
   pinMode(SOIL5_PWR_PIN, OUTPUT);
   digitalWrite(SOIL5_PWR_PIN, LOW);
   gpio_hold_en((gpio_num_t)SOIL5_PWR_PIN);
@@ -149,27 +149,27 @@ void prepareForDeepSleep(int minutes) {
   gpio_hold_en((gpio_num_t)SOIL5_DE_RE_PIN);
   pinMode(SOIL5_RX_PIN, INPUT);
   pinMode(SOIL5_TX_PIN, INPUT);
-  #endif
-  #ifdef SENSOR_MAXBOTIX_UART
+#endif
+#ifdef SENSOR_MAXBOTIX_UART
   pinMode(MAXBOTIX_PWR_PIN, OUTPUT);
   digitalWrite(MAXBOTIX_PWR_PIN, LOW);
   gpio_hold_en((gpio_num_t)MAXBOTIX_PWR_PIN);
   pinMode(MAXBOTIX_RX_PIN, INPUT);
   pinMode(MAXBOTIX_TX_PIN, INPUT);
-  #endif
-  #if defined(SENSOR_WATER_TEMP) || defined(SENSOR_MLX90614)
-  #if WATER_TEMP_PWR_PIN != -1
+#endif
+#if defined(SENSOR_WATER_TEMP) || defined(SENSOR_MLX90614)
+#if WATER_TEMP_PWR_PIN != -1
   pinMode(WATER_TEMP_PWR_PIN, OUTPUT);
   digitalWrite(WATER_TEMP_PWR_PIN, LOW);
   gpio_hold_en((gpio_num_t)WATER_TEMP_PWR_PIN);
-  #endif
-  #endif
+#endif
+#endif
 
-  // Put INA226 into power-down mode before deep sleep
-  // (I2C command, no GPIO needed — chip enters low-quiescent-current shutdown)
-  #ifdef SENSOR_INA226
+// Put INA226 into power-down mode before deep sleep
+// (I2C command, no GPIO needed — chip enters low-quiescent-current shutdown)
+#ifdef SENSOR_INA226
   ina226PowerDown();
-  #endif
+#endif
 
 #ifdef DEBUG
   Logln("");
@@ -188,10 +188,14 @@ void prepareForDeepSleep(int minutes) {
 
   // Double blink LED to visually signal transition to deep sleep
   pinMode(LED_PIN, OUTPUT);
-  digitalWrite(LED_PIN, HIGH); delay(150);
-  digitalWrite(LED_PIN, LOW);  delay(150);
-  digitalWrite(LED_PIN, HIGH); delay(150);
-  digitalWrite(LED_PIN, LOW);  delay(150);
+  digitalWrite(LED_PIN, HIGH);
+  delay(150);
+  digitalWrite(LED_PIN, LOW);
+  delay(150);
+  digitalWrite(LED_PIN, HIGH);
+  delay(150);
+  digitalWrite(LED_PIN, LOW);
+  delay(150);
 
   Serial.flush();
 

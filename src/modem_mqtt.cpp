@@ -13,28 +13,28 @@
 #include "utilities.h"
 
 #include <Arduino.h>
-#include <Wire.h>
-#include <TinyGsmClient.h>
-#include <PubSubClient.h>
 #include <ArduinoJson.h>
 #include <EEPROM.h>
+#include <PubSubClient.h>
 #include <RtcDS3231.h>
+#include <TinyGsmClient.h>
+#include <Wire.h>
 
 #include "config.h"
 #include "log.h"
 
 #define SerialMon Serial
-#define SerialAT  Serial1
+#define SerialAT Serial1
 
 /* ------------------------- External Definitions ------------------------- */
 
 extern ModuleConfig moduleCfg;
-extern TinyGsm       modem;
-extern PubSubClient  mqtt;
+extern TinyGsm modem;
+extern PubSubClient mqtt;
 
 extern RtcDS3231<TwoWire> rtc;
-extern RtcDateTime        rtcNow;
-extern char               dateStr[20];
+extern RtcDateTime rtcNow;
+extern char dateStr[20];
 
 extern bool firstRun;
 extern bool forceModemReset;
@@ -48,7 +48,7 @@ struct RpcMsg {
   String payload;
 };
 
-static RpcMsg  rpcQueue[8];
+static RpcMsg rpcQueue[8];
 static uint8_t rpcCount = 0;
 
 /* ---------------------------- JSON Helpers ------------------------------- */
@@ -85,7 +85,7 @@ void onMqttMessage(char* topic, byte* payload, unsigned int length) {
   if (t.startsWith("v1/devices/me/rpc/request/")) {
 
     if (rpcCount < (sizeof(rpcQueue) / sizeof(rpcQueue[0]))) {
-      rpcQueue[rpcCount].topic   = t;
+      rpcQueue[rpcCount].topic = t;
       rpcQueue[rpcCount].payload = p;
       rpcCount++;
     }
@@ -98,7 +98,7 @@ void onMqttMessage(char* topic, byte* payload, unsigned int length) {
     // Send ACK response
     int slash = t.lastIndexOf('/');
     if (slash > 0) {
-      String reqId     = t.substring(slash + 1);
+      String reqId = t.substring(slash + 1);
       String respTopic = "v1/devices/me/rpc/response/" + reqId;
 
       StaticJsonDocument<64> doc;
@@ -147,8 +147,10 @@ bool initA7670() {
 #ifdef MODEM_RESET_PIN
     gpio_hold_dis((gpio_num_t)MODEM_RESET_PIN);
     pinMode(MODEM_RESET_PIN, OUTPUT);
-    digitalWrite(MODEM_RESET_PIN, !MODEM_RESET_LEVEL); delay(100);
-    digitalWrite(MODEM_RESET_PIN,  MODEM_RESET_LEVEL); delay(2600);
+    digitalWrite(MODEM_RESET_PIN, !MODEM_RESET_LEVEL);
+    delay(100);
+    digitalWrite(MODEM_RESET_PIN, MODEM_RESET_LEVEL);
+    delay(2600);
     digitalWrite(MODEM_RESET_PIN, !MODEM_RESET_LEVEL);
 #endif
 
@@ -156,8 +158,10 @@ bool initA7670() {
     digitalWrite(MODEM_DTR_PIN, LOW);
 
     pinMode(BOARD_PWRKEY_PIN, OUTPUT);
-    digitalWrite(BOARD_PWRKEY_PIN, LOW);   delay(100);
-    digitalWrite(BOARD_PWRKEY_PIN, HIGH);  delay(1000);
+    digitalWrite(BOARD_PWRKEY_PIN, LOW);
+    delay(100);
+    digitalWrite(BOARD_PWRKEY_PIN, HIGH);
+    delay(1000);
     digitalWrite(BOARD_PWRKEY_PIN, LOW);
 
     forceModemReset = false;
@@ -224,7 +228,8 @@ bool initA7670() {
  * @brief Puts the modem into full low-power mode using DTR and GPIO holds.
  */
 void sleepA7670() {
-  if (mqtt.connected()) mqtt.disconnect();
+  if (mqtt.connected())
+    mqtt.disconnect();
 
   modem.gprsDisconnect();
   Logln("Enter modem sleep mode!");
@@ -331,9 +336,9 @@ void processQueuedRpcCommands() {
       int i2 = cmd.indexOf('-', i1 + 1);
 
       if (i1 != -1 && i2 != -1) {
-        moduleCfg.measure_time   = cmd.substring(2, i1).toInt();
+        moduleCfg.measure_time = cmd.substring(2, i1).toInt();
         moduleCfg.bluetooth_time = cmd.substring(i1 + 1, i2).toInt();
-        moduleCfg.GPRS_time      = cmd.substring(i2 + 1).toInt();
+        moduleCfg.GPRS_time = cmd.substring(i2 + 1).toInt();
 
         EEPROM.begin(sizeof(ModuleConfig));
         EEPROM.put(0, moduleCfg);
@@ -348,16 +353,17 @@ void processQueuedRpcCommands() {
 #endif
       }
 
-      digitalWrite(LED_PIN, LOW); delay(500);
+      digitalWrite(LED_PIN, LOW);
+      delay(500);
       digitalWrite(LED_PIN, HIGH);
 
-    /* ---- RTC update: D-YYYY-MM-DD-hh-mm-ss ---- */
+      /* ---- RTC update: D-YYYY-MM-DD-hh-mm-ss ---- */
     } else if (cmd.startsWith("D-")) {
 
-      int year   = atoi(cmd.substring(2, 6).c_str());
-      int month  = atoi(cmd.substring(7, 9).c_str());
-      int day    = atoi(cmd.substring(10, 12).c_str());
-      int hour   = atoi(cmd.substring(13, 15).c_str());
+      int year = atoi(cmd.substring(2, 6).c_str());
+      int month = atoi(cmd.substring(7, 9).c_str());
+      int day = atoi(cmd.substring(10, 12).c_str());
+      int hour = atoi(cmd.substring(13, 15).c_str());
       int minute = atoi(cmd.substring(16, 18).c_str());
       int second = atoi(cmd.substring(19, 21).c_str());
 
@@ -371,14 +377,17 @@ void processQueuedRpcCommands() {
       Logln(dateStr);
 #endif
 
-      digitalWrite(LED_PIN, LOW); delay(500);
+      digitalWrite(LED_PIN, LOW);
+      delay(500);
       digitalWrite(LED_PIN, HIGH);
 
     } else {
       // Unknown RPC command → blink three times
       for (int j = 0; j < 3; j++) {
-        digitalWrite(LED_PIN, LOW);  delay(100);
-        digitalWrite(LED_PIN, HIGH); delay(100);
+        digitalWrite(LED_PIN, LOW);
+        delay(100);
+        digitalWrite(LED_PIN, HIGH);
+        delay(100);
       }
     }
   }

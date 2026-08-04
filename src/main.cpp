@@ -10,13 +10,13 @@
  * Sensor type: selected via descriptive build flags (e.g. -DSENSOR_MAXBOTIX_UART)
  */
 
-#include "n_logger_config.h"
-#include "board.h"
 #include "ble_manager.h"
+#include "board.h"
 #include "eeprom_i2c.h"
 #include "error_sensor.h"
 #include "measurement_storage.h"
 #include "modem_mqtt.h"
+#include "n_logger_config.h"
 #include "power_sleep.h"
 #include "rtc_utils.h"
 #include "sensor_engine.h"
@@ -376,7 +376,8 @@ void setup() {
 #ifdef DEBUG
     uint16_t freePages = getEEPROMFreePages();
     uint16_t totalPages = EEPROM_MAX_PAGES - EEPROM_HEADER_SIZE;
-    Logf("FLUSHING EEPROM TO SD CARD (Used: %u / %u pages)...\n", totalPages - freePages, totalPages);
+    Logf("FLUSHING EEPROM TO SD CARD (Used: %u / %u pages)...\n", totalPages - freePages,
+         totalPages);
 #endif
 
     if (dumpEEPROM()) {
@@ -393,7 +394,7 @@ void setup() {
 
     delay(1000);
 
-#ifdef DEBUG
+#if defined(DEBUG) && defined(GPRS_MODULE)
     Logln("- Connecting to Internet: ");
 #endif
 

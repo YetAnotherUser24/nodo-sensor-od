@@ -9,7 +9,7 @@
 #include "eeprom_i2c.h"
 #include "log.h"
 #include "n_logger_config.h"
-#include "utilities.h"
+#include "board.h"
 #include <Wire.h>
 
 #ifndef EEPROM_HEADER_SIZE

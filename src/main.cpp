@@ -11,9 +11,7 @@
  */
 
 #include "n_logger_config.h"
-#ifdef GPRS_MODULE
-#include "utilities.h"
-#endif
+#include "board.h"
 #include "ble_manager.h"
 #include "eeprom_i2c.h"
 #include "error_sensor.h"
@@ -189,8 +187,7 @@ void setup() {
   // Release hardware GPIO hold locks latched from deep sleep
   gpio_deep_sleep_hold_dis();
 
-  pinMode(LED_PIN, OUTPUT);
-  digitalWrite(LED_PIN, LOW);
+  boardInit();
 
   // Always initialize Serial so Log()/Logln()/Logf() work regardless of DEBUG
   Serial.begin(115200);
@@ -244,9 +241,8 @@ void setup() {
   // SD bus init
 #ifdef SD_MODULE
 #if SD_EN_PIN != -1
-  pinMode(SD_EN_PIN, OUTPUT);
-  digitalWrite(SD_EN_PIN, LOW); // active-low enable
-  delay(10);                    // let SD module power stabilize
+  setPinActive(SD_EN_PIN, SD_EN_ACTIVE_HIGH);
+  delay(10); // let SD module power stabilize
 #endif
   sdSPI.begin(SD_PIN_SCLK, SD_PIN_MISO, SD_PIN_MOSI, SD_PIN_CS);
 #endif

@@ -4,7 +4,7 @@
  */
 
 #include "error_sensor.h"
-#include "utilities.h"
+#include "board.h"
 #include <Arduino.h>
 
 /* ----------------------- External Runtime Flags ----------------------- */

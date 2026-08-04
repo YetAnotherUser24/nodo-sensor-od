@@ -450,14 +450,10 @@ uint8_t dumpEEPROM() {
 
   // Power ON sensor / I2C bus VCC pin before communicating with EEPROM
 #if defined(MAXBOTIX_PWR_PIN) && MAXBOTIX_PWR_PIN != -1
-  pinMode(MAXBOTIX_PWR_PIN, OUTPUT);
-  gpio_hold_dis((gpio_num_t)MAXBOTIX_PWR_PIN);
-  digitalWrite(MAXBOTIX_PWR_PIN, HIGH);
+  setPinActive(MAXBOTIX_PWR_PIN, MAXBOTIX_PWR_ACTIVE_HIGH);
   delay(20);
 #elif defined(WATER_TEMP_PWR_PIN) && WATER_TEMP_PWR_PIN != -1
-  pinMode(WATER_TEMP_PWR_PIN, OUTPUT);
-  gpio_hold_dis((gpio_num_t)WATER_TEMP_PWR_PIN);
-  digitalWrite(WATER_TEMP_PWR_PIN, HIGH);
+  setPinActive(WATER_TEMP_PWR_PIN, WATER_TEMP_PWR_ACTIVE_HIGH);
   delay(20);
 #endif
 

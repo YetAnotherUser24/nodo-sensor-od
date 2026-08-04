@@ -23,7 +23,7 @@
 #include "config.h"
 #include "error_sensor.h"
 #include "n_logger_config.h"
-#include "utilities.h"
+#include "board.h"
 
 /* ------------------------ External Dependencies ------------------------ */
 

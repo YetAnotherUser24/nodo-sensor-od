@@ -10,7 +10,7 @@
 
 #include "modem_mqtt.h"
 #include "n_logger_config.h"
-#include "utilities.h"
+#include "board.h"
 
 #include <Arduino.h>
 #include <ArduinoJson.h>

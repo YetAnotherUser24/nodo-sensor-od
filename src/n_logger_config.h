@@ -10,6 +10,7 @@
  */
 
 #pragma once
+#include "board.h"
 #include <Arduino.h>
 
 /* --------------------------------------------------------------------------
@@ -137,6 +138,9 @@
 #ifndef WATER_TEMP_PWR_PIN
 #define WATER_TEMP_PWR_PIN 27
 #endif
+#ifndef WATER_TEMP_PWR_ACTIVE_HIGH
+#define WATER_TEMP_PWR_ACTIVE_HIGH true
+#endif
 #ifndef WATER_TEMP_NUM_READINGS
 #define WATER_TEMP_NUM_READINGS 2 // 0: Object Temp, 1: Ambient Temp
 #endif
@@ -183,51 +187,42 @@
 #endif
 
 // --- 3-Probe Soil Moisture/Temperature sensor (Modbus RTU over RS-485) ---
-#ifdef SENSOR_SOIL_3TIP
-#ifndef SOIL_RX_PIN
-#define SOIL_RX_PIN 34
+#ifdef SENSOR_SOIL3_3TIP
+#ifndef SOIL3_RX_PIN
+#define SOIL3_RX_PIN 34
 #endif
-#ifndef SOIL_TX_PIN
-#define SOIL_TX_PIN 32
+#ifndef SOIL3_TX_PIN
+#define SOIL3_TX_PIN 32
 #endif
-#ifndef SOIL_PWR_PIN
-#define SOIL_PWR_PIN 19
+#ifndef SOIL3_PWR_PIN
+#define SOIL3_PWR_PIN 19
 #endif
-#ifndef SOIL_DE_RE_PIN
-#define SOIL_DE_RE_PIN 0
+#ifndef SOIL3_BAUD
+#define SOIL3_BAUD 9600
 #endif
-#ifndef SOIL_BAUD
-#define SOIL_BAUD 9600
+#ifndef SOIL3_SLAVE_ID
+#define SOIL3_SLAVE_ID 1
 #endif
-#ifndef SOIL_SLAVE_ID
-#define SOIL_SLAVE_ID 1
+#ifndef SOIL3_SAMPLE_COUNT
+#define SOIL3_SAMPLE_COUNT 2
 #endif
-#ifndef SOIL_SAMPLE_COUNT
-#define SOIL_SAMPLE_COUNT 2
-#endif
-#ifndef SOIL_NUM_READINGS
+#ifndef SOIL3_NUM_READINGS
 // Each sample reads 2 registers (moisture + temperature), so total
 // readings = sample_count * 2.
-#define SOIL_NUM_READINGS (SOIL_SAMPLE_COUNT * SOIL_MODBUS_READ_COUNT)
+#define SOIL3_NUM_READINGS (SOIL3_SAMPLE_COUNT * SOIL3_MODBUS_READ_COUNT)
 #endif
-#ifndef SOIL_MODBUS_READ_COUNT
-#define SOIL_MODBUS_READ_COUNT 2
+#ifndef SOIL3_MODBUS_READ_COUNT
+#define SOIL3_MODBUS_READ_COUNT 2
 #endif
-#ifndef SOIL_MODBUS_START_ADDR
-#define SOIL_MODBUS_START_ADDR 0x0000
+#ifndef SOIL3_MODBUS_START_ADDR
+#define SOIL3_MODBUS_START_ADDR 0x0000
 #endif
-#ifndef SOIL_WARMUP_MS
-#define SOIL_WARMUP_MS 500
-#endif
-#ifndef SOIL_EN_PIN
-#define SOIL_EN_PIN -1
-#endif
-#ifndef SOIL_EN_ACTIVE_HIGH
-#define SOIL_EN_ACTIVE_HIGH true
+#ifndef SOIL3_WARMUP_MS
+#define SOIL3_WARMUP_MS 500
 #endif
 #define SENSOR_NAME "soil-3probe"
 #else
-#define SOIL_NUM_READINGS 0
+#define SOIL3_NUM_READINGS 0
 #endif
 
 // --- 5-Probe Soil Comprehensive sensor (Modbus RTU over RS-485) ---
@@ -266,12 +261,6 @@
 #endif
 #ifndef SOIL5_NUM_READINGS
 #define SOIL5_NUM_READINGS (SOIL5_SAMPLE_COUNT * SOIL5_MODBUS_READ_COUNT)
-#endif
-#ifndef SOIL5_EN_PIN
-#define SOIL5_EN_PIN -1
-#endif
-#ifndef SOIL5_EN_ACTIVE_HIGH
-#define SOIL5_EN_ACTIVE_HIGH true
 #endif
 #define SENSOR_NAME "soil-5probe"
 #else
@@ -360,7 +349,7 @@
 #ifndef MAX_SENSOR_READINGS
 #define MAX_SENSOR_READINGS                                                                        \
   (MAXBOTIX_NUM_READINGS + WATER_TEMP_NUM_READINGS + RADAR_NUM_READINGS + BATTERY_NUM_READINGS +   \
-   INA226_NUM_READINGS + SOIL_NUM_READINGS + SOIL5_NUM_READINGS)
+   INA226_NUM_READINGS + SOIL3_NUM_READINGS + SOIL5_NUM_READINGS)
 #endif
 
 // --- Fallback banner name when no sensor is defined ---
@@ -420,7 +409,7 @@ struct TelemetryPayload {
 #define STATUS_TEMPERATURE_BIT 18
 #define STATUS_GRPS_BIT 19
 #define STATUS_RADAR_SENSOR_BIT 20
-#define STATUS_SOIL_SENSOR_BIT 21
+#define STATUS_SOIL3_SENSOR_BIT 21
 
 /* --------------------------------------------------------------------------
  *  Transmission Recovery

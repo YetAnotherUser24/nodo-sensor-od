@@ -8,7 +8,7 @@
 
 #include "rtc_utils.h"
 
-#include "utilities.h"
+#include "board.h"
 #include <RtcDS3231.h>
 #include <Wire.h>
 

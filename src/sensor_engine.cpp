@@ -252,11 +252,11 @@ static HardwareSerial soilSerial(2);
  * @param[out] temperature Raw temperature value (÷10 = °C, signed)
  * @return 0 on success, -2 on comm failure, -5 on Modbus exception.
  */
-static int16_t soilReadBoth(int16_t& moisture, int16_t& temperature) {
+static int16_t soil3ReadBoth(int16_t& moisture, int16_t& temperature) {
   modbus_rtu::ModbusRtu modbus(soilSerial);
 
   modbus_rtu::ModbusRtu::Config cfg;
-  cfg.directionPin = SOIL_DE_RE_PIN;
+  cfg.directionPin = SOIL3_DE_RE_PIN;
   cfg.manualDirection = true;
   cfg.txActiveHigh = true;
   cfg.responseTimeoutMs = 500;
@@ -268,7 +268,7 @@ static int16_t soilReadBoth(int16_t& moisture, int16_t& temperature) {
   // CRITICAL: modbus.begin() initializes the DE/RE direction pin for RS-485.
   // Without this call, the transceiver never enables its receiver, making
   // communication impossible even though the UART lines are correct.
-  modbus.begin(SOIL_BAUD, SOIL_RX_PIN, SOIL_TX_PIN);
+  modbus.begin(SOIL3_BAUD, SOIL3_RX_PIN, SOIL3_TX_PIN);
 
   // Flush stale bytes and report
   uint8_t dropped = 0;
@@ -284,7 +284,7 @@ static int16_t soilReadBoth(int16_t& moisture, int16_t& temperature) {
 
   // Read 2 registers starting at 0x0000 (moisture + temperature)
   auto result =
-      modbus.readRegisters(SOIL_SLAVE_ID, 0x03, SOIL_MODBUS_START_ADDR, SOIL_MODBUS_READ_COUNT);
+      modbus.readRegisters(SOIL3_SLAVE_ID, 0x03, SOIL3_MODBUS_START_ADDR, SOIL3_MODBUS_READ_COUNT);
 
   if (!result.success) {
 #ifdef DEBUG
@@ -542,7 +542,7 @@ void sensorReadAll(TelemetryPayload& tp) {
 
     // Power off
     maxbotixSerial.end();
-    digitalWrite(MAXBOTIX_PWR_PIN, LOW);
+    setPinInactive(MAXBOTIX_PWR_PIN, MAXBOTIX_PWR_ACTIVE_HIGH, false);
   }
 #endif /* SENSOR_MAXBOTIX_UART */
 
@@ -550,9 +550,7 @@ void sensorReadAll(TelemetryPayload& tp) {
 #if defined(SENSOR_WATER_TEMP) || defined(SENSOR_MLX90614)
   {
 #if WATER_TEMP_PWR_PIN != -1
-    pinMode(WATER_TEMP_PWR_PIN, OUTPUT);
-    gpio_hold_dis((gpio_num_t)WATER_TEMP_PWR_PIN);
-    digitalWrite(WATER_TEMP_PWR_PIN, HIGH); // Power ON (GPIO 27 HIGH)
+    setPinActive(WATER_TEMP_PWR_PIN, WATER_TEMP_PWR_ACTIVE_HIGH); // Power ON
     delay(WATER_TEMP_WARMUP_MS);
 #endif
 
@@ -581,8 +579,7 @@ void sensorReadAll(TelemetryPayload& tp) {
 #ifdef SENSOR_RADAR
   {
     // Power on
-    pinMode(RADAR_PWR_PIN, OUTPUT);
-    digitalWrite(RADAR_PWR_PIN, HIGH);
+    setPinActive(RADAR_PWR_PIN, RADAR_PWR_ACTIVE_HIGH);
     delay(RADAR_WARMUP_MS);
 
     // Init UART at 9600 baud
@@ -624,27 +621,22 @@ void sensorReadAll(TelemetryPayload& tp) {
 
     // Power off
     radarSerial.end();
-    digitalWrite(RADAR_PWR_PIN, LOW);
+    setPinInactive(RADAR_PWR_PIN, RADAR_PWR_ACTIVE_HIGH, false);
   }
 #endif /* SENSOR_RADAR */
 
   /* ---- 3-Probe Soil Sensor (Modbus RTU, RS-485) ---- */
-#ifdef SENSOR_SOIL_3TIP
+#ifdef SENSOR_SOIL3_3TIP
   {
-// Enable sensor (if EN pin configured)
-#if SOIL_EN_PIN != -1
-    pinMode(SOIL_EN_PIN, OUTPUT);
-    digitalWrite(SOIL_EN_PIN, SOIL_EN_ACTIVE_HIGH ? HIGH : LOW);
-    delay(10);
+#ifdef RS485_EN_PIN
+    setPinActive(RS485_EN_PIN, RS485_EN_ACTIVE_HIGH);
 #endif
-
     // Power on
-    pinMode(SOIL_PWR_PIN, OUTPUT);
-    digitalWrite(SOIL_PWR_PIN, HIGH);
-    delay(SOIL_WARMUP_MS);
+    setPinActive(SOIL3_PWR_PIN, SOIL3_PWR_ACTIVE_HIGH);
+    delay(SOIL3_WARMUP_MS);
 
     // Init UART at 4800 baud
-    soilSerial.begin(SOIL_BAUD, SERIAL_8N1, SOIL_RX_PIN, SOIL_TX_PIN);
+    soilSerial.begin(SOIL3_BAUD, SERIAL_8N1, SOIL3_RX_PIN, SOIL3_TX_PIN);
 
     // Clear startup noise
     while (soilSerial.available())
@@ -655,24 +647,24 @@ void sensorReadAll(TelemetryPayload& tp) {
     unsigned long sampleStart = millis();
     const unsigned long SAMPLE_TIMEOUT = 3000;
 
-    while (nread < SOIL_SAMPLE_COUNT && (millis() - sampleStart) < SAMPLE_TIMEOUT) {
+    while (nread < SOIL3_SAMPLE_COUNT && (millis() - sampleStart) < SAMPLE_TIMEOUT) {
       int16_t moisture = 0;
       int16_t temperature = 0;
-      int16_t status = soilReadBoth(moisture, temperature);
+      int16_t status = soil3ReadBoth(moisture, temperature);
 
       if (status == 0) {
 #ifdef DEBUG
-        Logf("[SOIL] Sample %d/%d: moisture=%d, temp=%d\n", nread + 1, SOIL_SAMPLE_COUNT, moisture,
+        Logf("[SOIL] Sample %d/%d: moisture=%d, temp=%d\n", nread + 1, SOIL3_SAMPLE_COUNT, moisture,
              temperature);
 #endif
         tp.sensorReadings[readingIndex++] = moisture;
         tp.sensorReadings[readingIndex++] = temperature;
         nread++;
-        if (nread < SOIL_SAMPLE_COUNT)
+        if (nread < SOIL3_SAMPLE_COUNT)
           delay(200);
       } else {
 #ifdef DEBUG
-        Logf("[SOIL] Sample %d/%d: error %d\n", nread + 1, SOIL_SAMPLE_COUNT, status);
+        Logf("[SOIL] Sample %d/%d: error %d\n", nread + 1, SOIL3_SAMPLE_COUNT, status);
 #endif
         delay(100);
       }
@@ -681,18 +673,16 @@ void sensorReadAll(TelemetryPayload& tp) {
     // Mark failure if no samples obtained
     if (nread == 0) {
 #ifdef DEBUG
-      Logf("[SOIL] Incomplete: %d/%d samples obtained\n", nread, SOIL_SAMPLE_COUNT);
+      Logf("[SOIL] Incomplete: %d/%d samples obtained\n", nread, SOIL3_SAMPLE_COUNT);
 #endif
-      tp.status = changeBit(tp.status, STATUS_SOIL_SENSOR_BIT, true);
+      tp.status = changeBit(tp.status, STATUS_SOIL3_SENSOR_BIT, true);
     }
 
     // Power off
     soilSerial.end();
-    digitalWrite(SOIL_PWR_PIN, LOW);
-
-// Disable sensor (if EN pin configured)
-#if SOIL_EN_PIN != -1
-    digitalWrite(SOIL_EN_PIN, SOIL_EN_ACTIVE_HIGH ? LOW : HIGH);
+    setPinInactive(SOIL3_PWR_PIN, SOIL3_PWR_ACTIVE_HIGH, false);
+#ifdef RS485_EN_PIN
+    setPinInactive(RS485_EN_PIN, RS485_EN_ACTIVE_HIGH, false);
 #endif
   }
 #endif /* SENSOR_SOIL_3TIP */
@@ -700,16 +690,11 @@ void sensorReadAll(TelemetryPayload& tp) {
   /* ---- 5-Probe Soil Sensor (Modbus RTU, RS-485) ---- */
 #ifdef SENSOR_SOIL_5TIP
   {
-// Enable sensor (if EN pin configured)
-#if SOIL5_EN_PIN != -1
-    pinMode(SOIL5_EN_PIN, OUTPUT);
-    digitalWrite(SOIL5_EN_PIN, SOIL5_EN_ACTIVE_HIGH ? HIGH : LOW);
-    delay(10);
+#ifdef RS485_EN_PIN
+    setPinActive(RS485_EN_PIN, RS485_EN_ACTIVE_HIGH);
 #endif
-
     // Power on
-    pinMode(SOIL5_PWR_PIN, OUTPUT);
-    digitalWrite(SOIL5_PWR_PIN, HIGH);
+    setPinActive(SOIL5_PWR_PIN, SOIL5_PWR_ACTIVE_HIGH);
     delay(SOIL5_WARMUP_MS);
 
     // Init UART at 4800 baud
@@ -742,16 +727,14 @@ void sensorReadAll(TelemetryPayload& tp) {
 
     // Mark failure if no samples obtained
     if (nread == 0) {
-      tp.status = changeBit(tp.status, STATUS_SOIL_SENSOR_BIT, true);
+      tp.status = changeBit(tp.status, STATUS_SOIL3_SENSOR_BIT, true);
     }
 
     // Power off
     soil5Serial.end();
-    digitalWrite(SOIL5_PWR_PIN, LOW);
-
-// Disable sensor (if EN pin configured)
-#if SOIL5_EN_PIN != -1
-    digitalWrite(SOIL5_EN_PIN, SOIL5_EN_ACTIVE_HIGH ? LOW : HIGH);
+    setPinInactive(SOIL5_PWR_PIN, SOIL5_PWR_ACTIVE_HIGH, false);
+#ifdef RS485_EN_PIN
+    setPinInactive(RS485_EN_PIN, RS485_EN_ACTIVE_HIGH, false);
 #endif
   }
 #endif /* SENSOR_SOIL_5TIP */
@@ -798,9 +781,7 @@ int16_t readPrimarySensorRealtime() {
 
 #ifdef SENSOR_MAXBOTIX_UART
   if (!realtimeSensorInit) {
-    pinMode(MAXBOTIX_PWR_PIN, OUTPUT);
-    gpio_hold_dis((gpio_num_t)MAXBOTIX_PWR_PIN);
-    digitalWrite(MAXBOTIX_PWR_PIN, HIGH);
+    setPinActive(MAXBOTIX_PWR_PIN, MAXBOTIX_PWR_ACTIVE_HIGH);
     delay(MAXBOTIX_WARMUP_MS);
     maxbotixSerial.begin(9600, SERIAL_8N1, MAXBOTIX_RX_PIN, -1);
     while (maxbotixSerial.available())
@@ -810,9 +791,7 @@ int16_t readPrimarySensorRealtime() {
   val = maxbotixReadSingle();
 #elif defined(SENSOR_RADAR)
   if (!realtimeSensorInit) {
-    pinMode(RADAR_PWR_PIN, OUTPUT);
-    gpio_hold_dis((gpio_num_t)RADAR_PWR_PIN);
-    digitalWrite(RADAR_PWR_PIN, HIGH);
+    setPinActive(RADAR_PWR_PIN, RADAR_PWR_ACTIVE_HIGH);
     delay(RADAR_WARMUP_MS);
     radarSerial.begin(RADAR_BAUD, SERIAL_8N1, RADAR_RX_PIN, RADAR_TX_PIN);
     realtimeSensorInit = true;
@@ -829,10 +808,10 @@ void stopPrimarySensorRealtime() {
 
 #ifdef SENSOR_MAXBOTIX_UART
   maxbotixSerial.end();
-  // digitalWrite(MAXBOTIX_PWR_PIN, LOW);
+  setPinInactive(MAXBOTIX_PWR_PIN, MAXBOTIX_PWR_ACTIVE_HIGH, false);
 #elif defined(SENSOR_RADAR)
   radarSerial.end();
-  // digitalWrite(RADAR_PWR_PIN, LOW);
+  setPinInactive(RADAR_PWR_PIN, RADAR_PWR_ACTIVE_HIGH, false);
 #endif
 
   realtimeSensorInit = false;

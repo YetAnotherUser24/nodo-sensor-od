@@ -374,13 +374,9 @@ void setup() {
     // First boot after power-on/reset
     firstRun = true;
 #ifdef DEBUG
-    Logln("UPLOADING TO SD CARD:");
-    i2c_eeprom_read_buffer(EEPROM_ADDRESS, 0, eepromPageBuf, 32);
-    for (int n = 0; n < 32; n++) {
-      Log(String(eepromPageBuf[n]).c_str());
-      Log(", ");
-    }
-    Logln("");
+    uint16_t freePages = getEEPROMFreePages();
+    uint16_t totalPages = EEPROM_MAX_PAGES - EEPROM_HEADER_SIZE;
+    Logf("FLUSHING EEPROM TO SD CARD (Used: %u / %u pages)...\n", totalPages - freePages, totalPages);
 #endif
 
     if (dumpEEPROM()) {

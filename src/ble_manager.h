@@ -65,6 +65,7 @@ void bleProcessLedBlinks();
  *  - T-<measure>-<ble>-<gprs> : Update module timing configuration.
  *  - D-YYYY-MM-DD-HH-MM-SS   : Set RTC date and time.
  *  - START / STOP             : Enable/disable Serial-to-BLE streaming.
+ *  - CLEAR_EEPROM / CLEAR / C : Clear external I2C EEPROM storage contents.
  *  - DATA                     : Reserved.
  *
  * @param cmd Command string received over BLE.

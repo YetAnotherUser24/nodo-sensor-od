@@ -112,6 +112,16 @@ uint16_t getEEPROMFreePages() {
 }
 
 /**
+ * @brief Clears external I2C EEPROM header and resets page write pointer.
+ */
+void clearEEPROM() {
+  resetEEPromHeader(EEPROM_ADDRESS);
+  eepromWritePage = 0;
+  needFlushToSD = false;
+  Logln("EEPROM cleared.");
+}
+
+/**
  * @brief Returns available SD capacity (MB).
  */
 uint32_t getSDFreeMB() {

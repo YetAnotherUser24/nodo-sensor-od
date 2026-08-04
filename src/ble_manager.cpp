@@ -24,6 +24,7 @@
 #include "error_sensor.h"
 #include "n_logger_config.h"
 #include "board.h"
+#include "measurement_storage.h"
 
 /* ------------------------ External Dependencies ------------------------ */
 
@@ -336,9 +337,10 @@ void processCommand(const String& cmdIn) {
     bleLedBlinks = 1;
   }
 
-  else if (cmd == "C") {
-
-    // Reserved for future use
+  /* --------------------------- CLEAR EEPROM ----------------------------- */
+  else if (cmd == "CLEAR_EEPROM" || cmd == "CLEAR" || cmd == "C") {
+    clearEEPROM();
+    bleLedBlinks = 1;
   }
 
   /* ------------------------------ DATA --------------------------------- */

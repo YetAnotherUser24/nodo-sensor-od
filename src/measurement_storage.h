@@ -28,6 +28,11 @@ String markLineSent(const String& line);
 uint16_t getEEPROMFreePages();
 
 /**
+ * @brief Clears external I2C EEPROM header and resets page write pointer.
+ */
+void clearEEPROM();
+
+/**
  * @brief Returns available SD storage in megabytes.
  */
 uint32_t getSDFreeMB();

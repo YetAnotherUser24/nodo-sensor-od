@@ -66,6 +66,8 @@ void bleProcessLedBlinks();
  *  - D-YYYY-MM-DD-HH-MM-SS   : Set RTC date and time.
  *  - START / STOP             : Enable/disable Serial-to-BLE streaming.
  *  - CLEAR_EEPROM / CLEAR / C : Clear external I2C EEPROM storage contents.
+ *  - PEEK                     : Print compact 1-line overview for all active EEPROM pages.
+ *  - PEEK-<page>              : Print detailed record view for a specific EEPROM page index.
  *  - DATA                     : Reserved.
  *
  * @param cmd Command string received over BLE.

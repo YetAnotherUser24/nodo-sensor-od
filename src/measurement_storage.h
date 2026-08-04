@@ -33,6 +33,12 @@ uint16_t getEEPROMFreePages();
 void clearEEPROM();
 
 /**
+ * @brief Logs EEPROM storage status or dumps an unpacked page record.
+ * @param pageIndex Page number to peek (0 to EEPROM_MAX_PAGES - EEPROM_HEADER_SIZE - 1), or -1 for status.
+ */
+void peekEEPROM(int16_t pageIndex = -1);
+
+/**
  * @brief Returns available SD storage in megabytes.
  */
 uint32_t getSDFreeMB();

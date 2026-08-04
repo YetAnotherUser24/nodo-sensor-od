@@ -343,6 +343,17 @@ void processCommand(const String& cmdIn) {
     bleLedBlinks = 1;
   }
 
+  /* ---------------------------- PEEK EEPROM ----------------------------- */
+  else if (len >= 4 && strncmp(c, "PEEK", 4) == 0) {
+    if (len > 5 && c[4] == '-') {
+      int page = atoi(c + 5);
+      peekEEPROM(page);
+    } else {
+      peekEEPROM(-1);
+    }
+    bleLedBlinks = 1;
+  }
+
   /* ------------------------------ DATA --------------------------------- */
   else if (cmd == "DATA") {
     Logln("DOWNLOADING DATA (placeholder)");

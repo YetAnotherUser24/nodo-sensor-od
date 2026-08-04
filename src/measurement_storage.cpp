@@ -122,6 +122,102 @@ void clearEEPROM() {
 }
 
 /**
+ * @brief Logs EEPROM storage status or dumps an unpacked page record.
+ */
+void peekEEPROM(int16_t pageIndex) {
+  uint16_t totalPages = EEPROM_MAX_PAGES - EEPROM_HEADER_SIZE;
+  uint16_t freePages = getEEPROMFreePages();
+  uint16_t usedPages = totalPages - freePages;
+
+  if (pageIndex < 0) {
+    Logf("--- EEPROM STORAGE (NextWrite: %u/%u | Used: %u | Free: %u) ---\n",
+         eepromWritePage, totalPages, usedPages, freePages);
+
+    if (usedPages == 0) {
+      Logln("No active pages stored in EEPROM.");
+      return;
+    }
+
+    uint8_t header[EEPROM_HEADER_SIZE * EEPROM_PAGE_SIZE];
+    for (uint16_t h = 0; h < EEPROM_HEADER_SIZE; h++) {
+      i2c_eeprom_read_buffer(EEPROM_ADDRESS, h * EEPROM_PAGE_SIZE,
+                             header + (h * EEPROM_PAGE_SIZE), EEPROM_PAGE_SIZE);
+    }
+
+    byte pageBuf[EEPROM_PAGE_SIZE];
+    for (uint16_t p = 0; p < totalPages; p++) {
+      bool isUsed = (header[p / 8] >> (p % 8)) & 1;
+      if (!isUsed)
+        continue;
+
+      uint16_t addr = (p + EEPROM_HEADER_SIZE) * EEPROM_PAGE_SIZE;
+      i2c_eeprom_read_buffer(EEPROM_ADDRESS, addr, pageBuf, EEPROM_PAGE_SIZE);
+
+      uint32_t seconds2000 = ((uint32_t*)pageBuf)[0];
+      if (seconds2000 == 0 || seconds2000 == 0xFFFFFFFF) {
+        Logf("[P%u] (Empty/Corrupt)\n", p);
+        continue;
+      }
+
+      RtcDateTime ts(seconds2000);
+      formatDateTime(ts);
+
+      int16_t* readings = (int16_t*)&pageBuf[4];
+      int16_t tempRaw = readings[MAX_SENSOR_READINGS];
+      float tempC = tempRaw / 100.0f;
+      uint8_t sentFlag = pageBuf[EEPROM_SENT_FLAG_OFFSET];
+
+      char sensStr[64] = "";
+      int offset = 0;
+      for (int s = 0; s < MAX_SENSOR_READINGS; s++) {
+        if (s > 0) {
+          offset += snprintf(sensStr + offset, sizeof(sensStr) - offset, ", ");
+        }
+        offset += snprintf(sensStr + offset, sizeof(sensStr) - offset, "%d", readings[s]);
+      }
+
+      Logf("[P%u] %s | S:[%s] | %.2fC | Sent:%s\n", p, dateStr, sensStr, tempC,
+           (sentFlag == FLAG_SENT) ? "YES" : "NO");
+    }
+    return;
+  }
+
+  if (pageIndex >= (int16_t)totalPages) {
+    Logf("[EEPROM] Invalid page %d (max index is %d)\n", pageIndex, totalPages - 1);
+    return;
+  }
+
+  byte pageBuf[EEPROM_PAGE_SIZE];
+  uint16_t addr = (pageIndex + EEPROM_HEADER_SIZE) * EEPROM_PAGE_SIZE;
+  i2c_eeprom_read_buffer(EEPROM_ADDRESS, addr, pageBuf, EEPROM_PAGE_SIZE);
+
+  uint32_t seconds2000 = ((uint32_t*)pageBuf)[0];
+  if (seconds2000 == 0 || seconds2000 == 0xFFFFFFFF) {
+    Logf("--- EEPROM PAGE %d: EMPTY / UNWRITTEN ---\n", pageIndex);
+    return;
+  }
+
+  RtcDateTime ts(seconds2000);
+  formatDateTime(ts);
+
+  int16_t* readings = (int16_t*)&pageBuf[4];
+  int16_t tempRaw = readings[MAX_SENSOR_READINGS];
+  float tempC = tempRaw / 100.0f;
+
+  uint32_t status = ((uint32_t)(uint16_t)readings[MAX_SENSOR_READINGS + 1]) |
+                    (((uint32_t)(uint16_t)readings[MAX_SENSOR_READINGS + 2]) << 16);
+  uint8_t sentFlag = pageBuf[EEPROM_SENT_FLAG_OFFSET];
+
+  Logf("--- EEPROM PAGE %d ---\n", pageIndex);
+  Logf("Time: %s (ts=%u)\n", dateStr, seconds2000);
+  for (int i = 0; i < MAX_SENSOR_READINGS; i++) {
+    Logf("Sensor[%d]: %d\n", i, readings[i]);
+  }
+  Logf("Temp: %.2f C | Status: 0x%08X | Sent: %s\n", tempC, status,
+       (sentFlag == FLAG_SENT) ? "YES" : "NO");
+}
+
+/**
  * @brief Returns available SD capacity (MB).
  */
 uint32_t getSDFreeMB() {

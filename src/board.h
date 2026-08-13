@@ -268,7 +268,7 @@ inline void setPinInactive(int pin, bool activeHigh, bool holdInSleep = false) {
 
 /* Power Enable Control Pins & Active Polarities */
 #ifndef EN_5V_PIN
-#define EN_5V_PIN 18
+#define EN_5V_PIN 19
 #endif
 #ifndef EN_5V_ACTIVE_HIGH
 #define EN_5V_ACTIVE_HIGH true

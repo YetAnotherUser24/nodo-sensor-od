@@ -192,17 +192,17 @@ void setup() {
   // Always initialize Serial so Log()/Logln()/Logf() work regardless of DEBUG
   Serial.begin(115200);
 
-// Initialize Task Watchdog Timer (30s) for hardware auto-recovery
+// Initialize Task Watchdog Timer (60s) for hardware auto-recovery
 #if defined(ESP_IDF_VERSION_MAJOR) && (ESP_IDF_VERSION_MAJOR >= 5)
   esp_task_wdt_config_t wdt_config = {
-      .timeout_ms = 30000,
+      .timeout_ms = 60000,
       .idle_core_mask = (1 << portNUM_PROCESSORS) - 1,
       .trigger_panic = true,
   };
   esp_task_wdt_reconfigure(&wdt_config);
   esp_task_wdt_add(NULL);
 #else
-  esp_task_wdt_init(30, true);
+  esp_task_wdt_init(60, true);
   esp_task_wdt_add(NULL);
 #endif
 
@@ -306,7 +306,9 @@ void setup() {
 #ifdef DEBUG
       Logln("SAVE MEASURE LEVEL IN EEPROM");
 #endif
+      esp_task_wdt_reset();
       takeMeasurement();
+      esp_task_wdt_reset();
       Logln("MT TIME...");
     }
 
@@ -316,11 +318,13 @@ void setup() {
       Logln("TRY TO CONNECT TO BLUETOOTH");
 #endif
       digitalWrite(LED_PIN, LOW);
+      esp_task_wdt_reset();
       startBLE();
     }
 
     /* Force BLE ON every cycle if streaming was previously active */
     if (bleStreamingActive) {
+      esp_task_wdt_reset();
       startBLE();
     }
 
@@ -329,7 +333,9 @@ void setup() {
 #ifdef DEBUG
       Logln("TRY TO CONNECT TO GPRS AND SEND STORED DATA");
 #endif
+      esp_task_wdt_reset();
       mqttAvailable = initA7670();
+      esp_task_wdt_reset();
 
       if (mqttAvailable) {
         failedTransmissionCount = 0;
@@ -340,6 +346,7 @@ void setup() {
         unsigned long t0 = millis();
         const unsigned long RPC_LISTEN_MS = 5000;
         while (millis() - t0 < RPC_LISTEN_MS) {
+          esp_task_wdt_reset();
           mqtt.loop();
           delay(10);
         }
@@ -392,6 +399,7 @@ void setup() {
       error(3, LED_PIN);
     }
 
+    esp_task_wdt_reset();
     delay(1000);
 
 #if defined(DEBUG) && defined(GPRS_MODULE)
@@ -399,10 +407,13 @@ void setup() {
 #endif
 
     Logln("First run...");
+    esp_task_wdt_reset();
     takeMeasurement();
+    esp_task_wdt_reset();
 
 #ifdef GPRS_MODULE
     mqttAvailable = initA7670();
+    esp_task_wdt_reset();
 
     if (mqttAvailable) {
       failedTransmissionCount = 0;
@@ -413,6 +424,7 @@ void setup() {
       unsigned long t0 = millis();
       const unsigned long RPC_LISTEN_MS = 5000;
       while (millis() - t0 < RPC_LISTEN_MS) {
+        esp_task_wdt_reset();
         mqtt.loop();
         delay(10);
       }
@@ -443,10 +455,12 @@ void setup() {
       delay(100);
     }
     sleepA7670();
+    esp_task_wdt_reset();
   }
 #endif
 
   if (firstRun) {
+    esp_task_wdt_reset();
     startBLE();
   }
 }

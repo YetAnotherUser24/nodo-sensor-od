@@ -19,6 +19,7 @@
 #include <RtcDS3231.h>
 #include <TinyGsmClient.h>
 #include <Wire.h>
+#include <esp_task_wdt.h>
 
 #include "config.h"
 #include "log.h"
@@ -181,14 +182,17 @@ bool initA7670() {
     delay(1000);
   }
 
+  esp_task_wdt_reset();
   Logln("Start modem...");
   delay(3000);
+  esp_task_wdt_reset();
 
   if (!modem.init()) {
     DBG("Failed to init modem");
     return false;
   }
 
+  esp_task_wdt_reset();
   DBG("Modem Name:", modem.getModemName());
   DBG("Modem Info:", modem.getModemInfo());
 
@@ -197,12 +201,14 @@ bool initA7670() {
   }
 
   Log("Waiting for network...");
+  esp_task_wdt_reset();
   if (!modem.waitForNetwork()) {
     Logln(" fail");
     delay(10000);
     return false;
   }
   Logln(" success");
+  esp_task_wdt_reset();
 
   if (!modem.gprsConnect(APN, APN_USER, APN_PASS)) {
     Logln("GPRS attach fail");
@@ -211,6 +217,7 @@ bool initA7670() {
   }
 
   Logln("GPRS connected");
+  esp_task_wdt_reset();
 
   mqtt.setServer(MQTT_HOST, MQTT_PORT);
   bool mqttOk = connectMQTT();
@@ -228,6 +235,7 @@ bool initA7670() {
  * @brief Puts the modem into full low-power mode using DTR and GPIO holds.
  */
 void sleepA7670() {
+  esp_task_wdt_reset();
   if (mqtt.connected())
     mqtt.disconnect();
 
@@ -246,13 +254,16 @@ void sleepA7670() {
   }
 
   delay(1000);
+  esp_task_wdt_reset();
 
   uint32_t t0 = millis();
-  while (modem.testAT() && (millis() - t0) < 5000UL) {
+  while (modem.testAT(500) && (millis() - t0) < 5000UL) {
+    esp_task_wdt_reset();
     Log(".");
     delay(250);
   }
   Logln("Modem is not responding, modem has slept!");
+  esp_task_wdt_reset();
 
 #ifdef BOARD_POWERON_PIN
   gpio_hold_en((gpio_num_t)BOARD_POWERON_PIN);
@@ -283,6 +294,7 @@ bool connectMQTT(uint8_t maxAttempts, uint16_t delayMs) {
   Log("Connecting MQTT...");
 
   for (uint8_t attempt = 1; attempt <= maxAttempts; attempt++) {
+    esp_task_wdt_reset();
     Logf(" (attempt %u/%u)", attempt, maxAttempts);
 
     if (mqtt.connect(MQTT_CLIENT_ID, MQTT_TOKEN, "")) {

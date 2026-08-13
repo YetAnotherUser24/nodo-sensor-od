@@ -125,6 +125,7 @@
 #ifndef MAXBOTIX_SAMPLE_TIMEOUT_MS
 #define MAXBOTIX_SAMPLE_TIMEOUT_MS 1000
 #endif
+#undef SENSOR_NAME
 #define SENSOR_NAME "maxbotix-uart"
 #else
 #define MAXBOTIX_NUM_READINGS 0
@@ -147,6 +148,7 @@
 #ifndef WATER_TEMP_WARMUP_MS
 #define WATER_TEMP_WARMUP_MS 100
 #endif
+#undef SENSOR_NAME
 #define SENSOR_NAME "mlx90614"
 #else
 #define WATER_TEMP_NUM_READINGS 0
@@ -164,7 +166,7 @@
 #define RADAR_PWR_PIN 19
 #endif
 #ifndef RADAR_BAUD
-#define RADAR_BAUD 9600
+#define RADAR_BAUD 115200
 #endif
 #ifndef RADAR_SLAVE_ID
 #define RADAR_SLAVE_ID 1
@@ -176,18 +178,19 @@
 #define RADAR_MODBUS_REGISTER 0x0001
 #endif
 #ifndef RADAR_WARMUP_MS
-#define RADAR_WARMUP_MS 200
+#define RADAR_WARMUP_MS 2500
 #endif
 #ifndef RADAR_SAMPLE_TIMEOUT_MS
-#define RADAR_SAMPLE_TIMEOUT_MS 1500
+#define RADAR_SAMPLE_TIMEOUT_MS 8000
 #endif
+#undef SENSOR_NAME
 #define SENSOR_NAME "radar"
 #else
 #define RADAR_NUM_READINGS 0
 #endif
 
 // --- 3-Probe Soil Moisture/Temperature sensor (Modbus RTU over RS-485) ---
-#ifdef SENSOR_SOIL3_3TIP
+#ifdef SENSOR_SOIL_3TIP
 #ifndef SOIL3_RX_PIN
 #define SOIL3_RX_PIN 34
 #endif
@@ -220,6 +223,7 @@
 #ifndef SOIL3_WARMUP_MS
 #define SOIL3_WARMUP_MS 500
 #endif
+#undef SENSOR_NAME
 #define SENSOR_NAME "soil-3probe"
 #else
 #define SOIL3_NUM_READINGS 0
@@ -262,6 +266,7 @@
 #ifndef SOIL5_NUM_READINGS
 #define SOIL5_NUM_READINGS (SOIL5_SAMPLE_COUNT * SOIL5_MODBUS_READ_COUNT)
 #endif
+#undef SENSOR_NAME
 #define SENSOR_NAME "soil-5probe"
 #else
 #define SOIL5_NUM_READINGS 0

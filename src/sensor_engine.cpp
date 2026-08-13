@@ -156,6 +156,7 @@ static int16_t mlx90614ReadTemp(uint8_t reg) {
 #ifdef SENSOR_RADAR
 
 #include "modbus_rtu.h"
+#include <esp_task_wdt.h>
 
 static HardwareSerial radarSerial(2);
 
@@ -189,6 +190,7 @@ static int16_t radarReadSingle() {
   }
 #endif
 
+  esp_task_wdt_reset();
   // Read register 0x0001 (empty height) from slave ID 1
   auto result = modbus.readRegisters(RADAR_SLAVE_ID, 0x03, RADAR_MODBUS_REGISTER, 1);
 
@@ -580,9 +582,11 @@ void sensorReadAll(TelemetryPayload& tp) {
   {
     // Power on
     setPinActive(RADAR_PWR_PIN, RADAR_PWR_ACTIVE_HIGH);
+    esp_task_wdt_reset();
     delay(RADAR_WARMUP_MS);
+    esp_task_wdt_reset();
 
-    // Init UART at 9600 baud
+    // Init UART at RADAR_BAUD
     radarSerial.begin(RADAR_BAUD, SERIAL_8N1, RADAR_RX_PIN, RADAR_TX_PIN);
 
     // Clear startup noise
@@ -594,6 +598,7 @@ void sensorReadAll(TelemetryPayload& tp) {
     unsigned long sampleStart = millis();
 
     while (nread < RADAR_NUM_READINGS && (millis() - sampleStart) < RADAR_SAMPLE_TIMEOUT_MS) {
+      esp_task_wdt_reset();
       int16_t sample = radarReadSingle();
       if (sample > 0) {
 #ifdef DEBUG
@@ -607,7 +612,7 @@ void sensorReadAll(TelemetryPayload& tp) {
 #ifdef DEBUG
         Logf("[RADAR] Sample %d/%d: error %d\n", nread + 1, RADAR_NUM_READINGS, sample);
 #endif
-        delay(50);
+        delay(100);
       }
     }
 

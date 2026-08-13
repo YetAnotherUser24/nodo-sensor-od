@@ -304,7 +304,7 @@ inline void setPinInactive(int pin, bool activeHigh, bool holdInSleep = false) {
 #endif
 
 #ifndef I2C_SCL_PIN
-#define I2C_SCL_PIN 12
+#define I2C_SCL_PIN 22
 #endif
 
 #ifndef I2C_EN_PIN

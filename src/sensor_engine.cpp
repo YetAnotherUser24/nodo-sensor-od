@@ -626,7 +626,7 @@ void sensorReadAll(TelemetryPayload& tp) {
 #endif /* SENSOR_RADAR */
 
   /* ---- 3-Probe Soil Sensor (Modbus RTU, RS-485) ---- */
-#ifdef SENSOR_SOIL3_3TIP
+#ifdef SENSOR_SOIL_3TIP
   {
 #ifdef RS485_EN_PIN
     setPinActive(RS485_EN_PIN, RS485_EN_ACTIVE_HIGH);

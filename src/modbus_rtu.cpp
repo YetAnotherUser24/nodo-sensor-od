@@ -1,4 +1,5 @@
 #include "modbus_rtu.h"
+#include <driver/gpio.h>
 
 namespace modbus_rtu {
 
@@ -37,8 +38,15 @@ void ModbusRtu::begin(uint32_t baud, int8_t rxPin, int8_t txPin, uint32_t serial
   }
 
   if (config_.manualDirection && config_.directionPin != InvalidDirectionPin) {
+    if (GPIO_IS_VALID_OUTPUT_GPIO(config_.directionPin)) {
+      gpio_hold_dis((gpio_num_t)config_.directionPin);
+    }
     pinMode(config_.directionPin, OUTPUT);
     setReceiveMode();
+  }
+
+  if (txPin >= 0 && GPIO_IS_VALID_OUTPUT_GPIO(txPin)) {
+    gpio_hold_dis((gpio_num_t)txPin);
   }
 
   serial_->begin(baud, serialConfig, rxPin, txPin);
@@ -60,6 +68,9 @@ void ModbusRtu::setDirectionControl(uint8_t directionPin, bool manualDirection, 
   config_.txActiveHigh = txActiveHigh;
 
   if (config_.manualDirection && config_.directionPin != InvalidDirectionPin) {
+    if (GPIO_IS_VALID_OUTPUT_GPIO(config_.directionPin)) {
+      gpio_hold_dis((gpio_num_t)config_.directionPin);
+    }
     pinMode(config_.directionPin, OUTPUT);
     setReceiveMode();
   }
@@ -72,6 +83,9 @@ void ModbusRtu::setTxActiveHigh(bool txActiveHigh) {
 void ModbusRtu::setManualDirection(bool manualDirection) {
   config_.manualDirection = manualDirection;
   if (config_.manualDirection && config_.directionPin != InvalidDirectionPin) {
+    if (GPIO_IS_VALID_OUTPUT_GPIO(config_.directionPin)) {
+      gpio_hold_dis((gpio_num_t)config_.directionPin);
+    }
     pinMode(config_.directionPin, OUTPUT);
     setReceiveMode();
   }

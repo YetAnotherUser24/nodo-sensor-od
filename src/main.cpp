@@ -493,34 +493,49 @@ void loop() {
       }
     }
 
-    /* Real-time sensor preview stream ("SEND" command) */
+    /* Continuous monitoring and storage loop ("MONITOR" / "SEND" command) */
     if (bleRealtimeSendActive && bleDeviceConnected && pServer != nullptr) {
-      static unsigned long lastRealtimeSample = 0;
-      // Only read sensor and notify when client has subscribed to notifications
-      if (isBleNotifyEnabled() && millis() - lastRealtimeSample >= 1000) {
-        lastRealtimeSample = millis();
-        int16_t dist = readPrimarySensorRealtime();
-        if (dist > 0 && isBleNotifyEnabled()) {
-          static char distBuf[8];
-          itoa(dist, distBuf, 10);
-          pNotifyCharacteristic->setValue((const char*)distBuf);
-          pNotifyCharacteristic->notify();
-          delay(10); // ponytail: yield briefly to let BLE BTC task flush GATT packet safely
-#ifdef DEBUG
-          Logf("[BLE][REALTIME] Sent: %s mm\n", distBuf);
+      static unsigned long lastMonitorSample = 0;
+      if (millis() - lastMonitorSample >= bleMonitorIntervalMs) {
+        lastMonitorSample = millis();
+
+        // 1. Full measurement cycle: samples all sensors, RTC, battery, and saves to EEPROM / SD
+        takeMeasurement();
+
+        // 2. Extract primary measurement for BLE notification
+        int16_t primaryReading = 0;
+#ifdef SENSOR_OD
+        primaryReading = telemetryPayload.sensorReadings[1]; // DO in centi-mg/L (e.g. 8472 -> 84.72 mg/L)
+#else
+        primaryReading = telemetryPayload.sensorReadings[0];
 #endif
+
+        static char readingBuf[16];
+        itoa(primaryReading, readingBuf, 10);
+
+        if (pNotifyCharacteristic != nullptr) {
+          pNotifyCharacteristic->setValue((const char*)readingBuf);
+          pNotifyCharacteristic->notify();
         }
-        bleStartTime = millis(); // Refresh BLE active window while real-time streaming
+        if (pCharacteristic != nullptr) {
+          pCharacteristic->setValue((const char*)readingBuf);
+          pCharacteristic->notify();
+        }
+        delay(10); // yield briefly to let BLE BTC task flush GATT packet safely
+
+#ifdef SENSOR_OD
+        Logf("[MONITOR] Saved & Sent DO: %d.%02d mg/L (%s)\n", primaryReading / 100,
+             abs(primaryReading % 100), readingBuf);
+#else
+        Logf("[MONITOR] Saved & Sent: %s\n", readingBuf);
+#endif
+
+        bleStartTime = millis(); // Refresh BLE active window while monitoring is active
       }
-      wasStreaming = true;
     } else {
-      // Only kill streaming on actual disconnect, not on missing notification subscription
+      // Only kill monitoring on actual disconnect
       if (!bleDeviceConnected) {
         bleRealtimeSendActive = false;
-      }
-      if (wasStreaming) {
-        stopPrimarySensorRealtime();
-        wasStreaming = false;
       }
     }
 

@@ -52,6 +52,7 @@ extern bool bleDeviceConnected;
 
 RTC_DATA_ATTR bool bleStreamingActive = false;
 bool bleRealtimeSendActive = false;
+uint32_t bleMonitorIntervalMs = 5000;
 bool bleRestartAdvertisingRequested = false;
 
 /** Tracks whether a BLE client has ever connected (for better log messages). */
@@ -172,9 +173,10 @@ void startBLE() {
 
   BLEService* pService = pServer->createService(SERVICE_UUID);
 
-  // WRITE characteristic (beb5483e-36e1-4688-b7f5-ea07361b26a8) for commands
+  // COMMAND & NOTIFY characteristic (beb5483e-36e1-4688-b7f5-ea07361b26a8) for commands & streaming
   pCharacteristic = pService->createCharacteristic(
-      CHARACTERISTIC_UUID, BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_WRITE);
+      CHARACTERISTIC_UUID, BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_WRITE |
+                               BLECharacteristic::PROPERTY_NOTIFY);
   pCharacteristic->addDescriptor(new BLE2902());
   pCharacteristic->setCallbacks(new MyCallbacks());
 
@@ -316,10 +318,19 @@ void processCommand(const String& cmdIn) {
     bleLedBlinks = 1;
   }
 
-  /* ------------------------------- SEND --------------------------------- */
-  else if (cmd == "SEND") {
+  /* ------------------- MONITOR / SEND [ -<seconds> ] -------------------- */
+  else if (strncmp(c, "MONITOR", 7) == 0 || strncmp(c, "SEND", 4) == 0 || strncmp(c, "REC", 3) == 0) {
+    uint32_t intervalSec = 5; // default 5 seconds
+    const char* dash = strchr(c, '-');
+    if (dash != nullptr) {
+      int parsed = atoi(dash + 1);
+      if (parsed >= 1 && parsed <= 3600) {
+        intervalSec = static_cast<uint32_t>(parsed);
+      }
+    }
+    bleMonitorIntervalMs = intervalSec * 1000UL;
     bleRealtimeSendActive = true;
-    Logln("Real-time sensor stream ENABLED (SEND)");
+    Logf("Continuous monitoring & recording ENABLED (interval: %u s)\n", intervalSec);
     bleLedBlinks = 1;
   }
 
@@ -327,7 +338,7 @@ void processCommand(const String& cmdIn) {
   else if (cmd == "STOP") {
     bleRealtimeSendActive = false;
     bleStreamingActive = false;
-    Logln("Real-time sensor stream DISABLED (STOP)");
+    Logln("Continuous monitoring DISABLED (STOP)");
     bleLedBlinks = 1;
   }
 

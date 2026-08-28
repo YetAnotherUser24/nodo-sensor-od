@@ -114,39 +114,38 @@ The RTC time is used for:
 
 ---
 
-# 6. Streaming Commands (NEW)
+---
 
-### Enable Serial-to-BLE mirroring:
+# 6. Continuous Monitoring & Streaming Commands
+
+### Continuous Monitoring & Recording (`MONITOR` or `SEND`)
+```
+MONITOR
+MONITOR-5
+MONITOR-10
+SEND
+```
+- Starts continuous measurement and data recording.
+- **Default interval**: 5 seconds (or specify custom interval like `MONITOR-10` for 10 seconds).
+- **Data Saving**: Each interval runs `takeMeasurement()`, saving complete measurement records (RTC timestamp, temperature, sensor channels, battery, status) into **EEPROM** and automatically rotating into **SD card CSV** files.
+- **BLE Notification**: Pushes the live reading (e.g. Dissolved Oxygen) to connected BLE client characteristics (`...a8` and `...a9`).
+- Keeps BLE connection active while monitoring.
+
+### Enable Serial-to-BLE Log Mirroring (`START`)
 ```
 START
 ```
-
 When issued, the device sets a persistent flag (`bleStreamingActive = true`
-in RTC backup memory) that survives deep sleep. On every subsequent wake
-cycle:
+in RTC backup memory) that survives deep sleep. On every subsequent wake cycle:
+1. **BLE is automatically turned on**.
+2. All `Log()`/`Logln()`/`Logf()` output is pushed to the connected BLE client via Notify.
 
-1. **BLE is automatically turned on** (even if `bluetooth_time` would not
-   normally activate it this cycle).
-2. All `Log()`/`Logln()`/`Logf()` output is pushed to the
-   connected BLE client via Notify in addition to the Serial Monitor.
-
-This allows you to see exactly what the device prints — measurements,
-status, errors — in real time from nRF Connect.
-
-### Disable Serial-to-BLE mirroring:
+### Stop Monitoring & Streaming (`STOP`)
 ```
 STOP
 ```
-
-Resets the streaming flag. BLE returns to its normal schedule
-(`bluetooth_time` intervals only). Serial output continues to the
-Serial Monitor only.
-
-### Power Notes
-
-- `START` causes BLE to run on **every** wake cycle instead of only
-  at `bluetooth_time` intervals. This increases power consumption.
-- `STOP` restores normal power-saving behaviour.
+- Disables continuous monitoring/recording and log streaming.
+- Restores normal scheduled deep-sleep power saving mode.
 
 ---
 

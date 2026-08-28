@@ -133,24 +133,41 @@ YYYYMMDD_P.CSV
 Suffix `_P` = **pending file**  
 After full upload → renamed to `.CSV`
 
-### **CSV Header**
-```
-timestamp,level1,level2,level3,level4,level5,battery,temp,status,sent
-```
+### **CSV Header (Sensor-Specific)**
 
-### **Each Line**
-```
-2025-11-28 23:38:00,128,129,130,131,132,3980,2450,0,0
+The header is automatically generated on the first line when a daily CSV file is created:
+
+- **OD Digisens (`SENSOR_OD`)**:
+  ```csv
+  datetime, seconds_since_2000, water_temp_centi, do_centi_mg_l, do_sat_deci_pct, param3_centi, param4_centi, battery_mv, rtc_temp_centi, status, sent
+  ```
+- **Radar (`SENSOR_RADAR`) / Maxbotix (`SENSOR_MAXBOTIX_UART`)**:
+  ```csv
+  datetime, seconds_since_2000, distance_mm, battery_mv, rtc_temp_centi, status, sent
+  ```
+- **Soil 3-Tip (`SENSOR_SOIL_3TIP`)**:
+  ```csv
+  datetime, seconds_since_2000, moisture_centi_pct, soil_temp_centi, ec_us_cm, battery_mv, rtc_temp_centi, status, sent
+  ```
+- **Soil 5-Tip (`SENSOR_SOIL_5TIP`)**:
+  ```csv
+  datetime, seconds_since_2000, moisture_centi_pct, soil_temp_centi, ec_us_cm, ph_centi, npk_n, npk_p, npk_k, battery_mv, rtc_temp_centi, status, sent
+  ```
+
+### **Example Data Row (OD Sensor)**
+```csv
+2026/08/27 19:48:15, 841175295, 2390, 8258, 68, 682, 0, 4160, 2625, 0, 0
 ```
 
 | Field | Meaning |
 |--------|---------|
-| timestamp | human‑readable RTC timestamp |
-| level1..5 | raw sensor samples |
-| battery | battery mV |
-| temp | RTC temperature |
-| status | status flags |
-| sent | 0 = pending, 1 = uploaded |
+| `datetime` | Human‑readable RTC timestamp (`YYYY/MM/DD HH:MM:SS`) |
+| `seconds_since_2000` | Unix-style seconds offset from 2000/01/01 00:00:00 |
+| Sensor Channels | Sensor readings scaled to `int16_t` (e.g. `water_temp_centi`, `do_centi_mg_l`) |
+| `battery_mv` | Battery voltage in millivolts |
+| `rtc_temp_centi` | DS3231 RTC internal temperature (°C * 100) |
+| `status` | 32-bit hardware status bitmask |
+| `sent` | Cloud upload flag: `0` = pending/unsent, `1` = uploaded |
 
 ---
 

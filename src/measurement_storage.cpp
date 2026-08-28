@@ -662,6 +662,28 @@ void getFilename(const RtcDateTime& ts) {
   csvFilename[13] = '\0';
 }
 
+#ifdef SD_MODULE
+static void writeCsvHeader(SdFile& file) {
+  file.print(F("datetime, seconds_since_2000"));
+#if defined(SENSOR_OD)
+  file.print(F(", water_temp_centi, do_centi_mg_l, do_sat_deci_pct, param3_centi, param4_centi"));
+#elif defined(SENSOR_RADAR) || defined(SENSOR_MAXBOTIX_UART)
+  file.print(F(", distance_mm"));
+#elif defined(SENSOR_SOIL_3TIP)
+  file.print(F(", moisture_centi_pct, soil_temp_centi, ec_us_cm"));
+#elif defined(SENSOR_SOIL_5TIP)
+  file.print(F(", moisture_centi_pct, soil_temp_centi, ec_us_cm, ph_centi, npk_n, npk_p, npk_k"));
+#endif
+
+#if defined(SENSOR_BATTERY_ADC) || defined(SENSOR_INA226)
+  file.print(F(", battery_mv"));
+#endif
+
+  file.println(F(", rtc_temp_centi, status, sent"));
+  file.flush();
+}
+#endif
+
 /**
  * @brief Writes one EEPROM row into the proper daily CSV file.
  *
@@ -714,6 +736,9 @@ uint8_t writeEEPROMLine(uint16_t n) {
     Serial.println(csvFilename);
 #endif
     fileOpen = sdFile.open(csvFilename, O_CREAT | O_WRITE | O_APPEND);
+    if (fileOpen && sdFile.fileSize() == 0) {
+      writeCsvHeader(sdFile);
+    }
     dayCache = ts.Day();
   } else if (dayCache != ts.Day()) {
     getFilename(ts);
@@ -726,6 +751,9 @@ uint8_t writeEEPROMLine(uint16_t n) {
 #endif
     sdFile.close();
     fileOpen = sdFile.open(csvFilename, O_CREAT | O_WRITE | O_APPEND);
+    if (fileOpen && sdFile.fileSize() == 0) {
+      writeCsvHeader(sdFile);
+    }
     dayCache = ts.Day();
   }
 
@@ -759,7 +787,7 @@ uint8_t writeEEPROMLine(uint16_t n) {
   sdFile.flush();
   return 1;
 #else
-  return 1;
+  return 0;
 #endif
 }
 
@@ -794,6 +822,13 @@ bool markEepromSentByTimestamp(uint32_t secondsSince2000) {
  * -------------------------------------------------------------------------- */
 
 bool csvLineToJson(const String& line, String& jsonOut, uint32_t& outSeconds2000) {
+  if (line.length() < 10)
+    return false;
+
+  // Skip CSV header line (starts with non-digit character)
+  if (!isdigit(line.charAt(0)))
+    return false;
+
   int idx = 0, start = 0, field = 0;
   int values[MAX_SENSOR_READINGS + 2];
   uint32_t status = 0;

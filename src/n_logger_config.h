@@ -81,11 +81,12 @@
  *    -DSENSOR_RADAR             = Radar distance sensor (Modbus RTU, direct UART)
  *    -DSENSOR_SOIL_3TIP         = 3-probe soil moisture/temperature (Modbus RTU, RS-485)
  *    -DSENSOR_SOIL_5TIP         = 5-probe soil comprehensive sensor (Modbus RTU, RS-485)
+ *    -DSENSOR_OD                = Optical dissolved oxygen DIGISENS sensor (Modbus RTU, RS-485)
  *    -DSENSOR_BATTERY_ADC       = Battery voltage via ADC pin
  *
- *  NOTE: SENSOR_RADAR, SENSOR_SOIL_3TIP, and SENSOR_SOIL_5TIP share UART pins
- *  (GPIO 34/32) and power pin (GPIO 19). They are mutually exclusive — do NOT
- *  enable more than one in the same build.
+ *  NOTE: SENSOR_RADAR, SENSOR_SOIL_3TIP, SENSOR_SOIL_5TIP, and SENSOR_OD share
+ *  UART pins (GPIO 34/32 or 16/17) and power pin (GPIO 19 or 12).
+ *  They are mutually exclusive — do NOT enable more than one in the same build.
  *
  *  Each sensor defines its own pins, number of readings, and warmup time.
  *  Multiple compatible sensors can be active simultaneously.
@@ -95,14 +96,12 @@
  *  (e.g. -DMAXBOTIX_RX_PIN=22 in platformio.ini build_flags).
  * -------------------------------------------------------------------------- */
 
-// Radar, 3-probe soil, and 5-probe soil sensors share UART pins (GPIO 34/32) and
-// power pin (GPIO 19). At most one of these may be enabled in a single build.
-#if defined(SENSOR_RADAR) && (defined(SENSOR_SOIL_3TIP) || defined(SENSOR_SOIL_5TIP))
+// Radar, 3-probe soil, 5-probe soil, and OD sensors share UART pins and power pin.
+// At most one of these may be enabled in a single build.
+#if (defined(SENSOR_RADAR) + defined(SENSOR_SOIL_3TIP) + defined(SENSOR_SOIL_5TIP) +               \
+     defined(SENSOR_OD)) > 1
 #error                                                                                             \
-    "SENSOR_RADAR, SENSOR_SOIL_3TIP, and SENSOR_SOIL_5TIP share hardware pins and are mutually exclusive."
-#endif
-#if defined(SENSOR_SOIL_3TIP) && defined(SENSOR_SOIL_5TIP)
-#error "SENSOR_SOIL_3TIP and SENSOR_SOIL_5TIP share hardware pins and are mutually exclusive."
+    "SENSOR_RADAR, SENSOR_SOIL_3TIP, SENSOR_SOIL_5TIP, and SENSOR_OD share hardware pins and are mutually exclusive."
 #endif
 
 // --- MaxBotix MB12xx ultrasonic sensor over UART ---
@@ -272,6 +271,61 @@
 #define SOIL5_NUM_READINGS 0
 #endif
 
+// --- Optical Dissolved Oxygen (OD) sensor (Modbus RTU over RS-485) ---
+#ifdef SENSOR_OD
+#ifndef OD_RX_PIN
+#define OD_RX_PIN 34
+#endif
+#ifndef OD_TX_PIN
+#define OD_TX_PIN 32
+#endif
+#ifndef OD_PWR_PIN
+#define OD_PWR_PIN 19
+#endif
+#ifndef OD_DE_RE_PIN
+#define OD_DE_RE_PIN 0
+#endif
+#ifndef OD_BAUD
+#define OD_BAUD 9600
+#endif
+#ifndef OD_SLAVE_ID
+#define OD_SLAVE_ID 10
+#endif
+#ifndef OD_SAMPLE_COUNT
+#define OD_SAMPLE_COUNT 1
+#endif
+#ifndef OD_MODBUS_REGISTER_ORDER
+#define OD_MODBUS_REGISTER_ORDER 0x0001
+#endif
+#ifndef OD_MODBUS_ORDER_VALUE
+#define OD_MODBUS_ORDER_VALUE 0x001F
+#endif
+#ifndef OD_MODBUS_START_ADDR
+#define OD_MODBUS_START_ADDR 0x0053
+#endif
+#ifndef OD_MODBUS_READ_COUNT
+#define OD_MODBUS_READ_COUNT 10
+#endif
+#ifndef OD_SAMPLING_DELAY_REG
+#define OD_SAMPLING_DELAY_REG 0x00A4
+#endif
+#ifndef OD_DEFAULT_SAMPLING_DELAY_MS
+#define OD_DEFAULT_SAMPLING_DELAY_MS 250
+#endif
+#ifndef OD_WARMUP_MS
+#define OD_WARMUP_MS 1500
+#endif
+#ifndef OD_NUM_READINGS
+// 5 floats decoded from 10 registers = 5 int16 readings:
+// [0]=Temp (centi °C), [1]=DO (centi mg/L), [2]=DO Sat (deci %Sat), [3]=P3, [4]=P4
+#define OD_NUM_READINGS 5
+#endif
+#undef SENSOR_NAME
+#define SENSOR_NAME "od-digisens"
+#else
+#define OD_NUM_READINGS 0
+#endif
+
 // --- Battery voltage via ADC ---
 #ifdef SENSOR_BATTERY_ADC
 #ifndef BATTERY_ADC_PIN
@@ -303,6 +357,9 @@
 #elif defined(SENSOR_SOIL_5TIP)
 #undef SENSOR_NAME
 #define SENSOR_NAME "soil-5probe"
+#elif defined(SENSOR_OD)
+#undef SENSOR_NAME
+#define SENSOR_NAME "od-digisens"
 #else
 #define SENSOR_NAME "battery-adc"
 #endif
@@ -343,6 +400,9 @@
 #elif defined(SENSOR_SOIL_5TIP)
 #undef SENSOR_NAME
 #define SENSOR_NAME "soil-5probe"
+#elif defined(SENSOR_OD)
+#undef SENSOR_NAME
+#define SENSOR_NAME "od-digisens"
 #else
 #define SENSOR_NAME "ina226"
 #endif
@@ -354,7 +414,7 @@
 #ifndef MAX_SENSOR_READINGS
 #define MAX_SENSOR_READINGS                                                                        \
   (MAXBOTIX_NUM_READINGS + WATER_TEMP_NUM_READINGS + RADAR_NUM_READINGS + BATTERY_NUM_READINGS +   \
-   INA226_NUM_READINGS + SOIL3_NUM_READINGS + SOIL5_NUM_READINGS)
+   INA226_NUM_READINGS + SOIL3_NUM_READINGS + SOIL5_NUM_READINGS + OD_NUM_READINGS)
 #endif
 
 // --- Fallback banner name when no sensor is defined ---
@@ -415,6 +475,7 @@ struct TelemetryPayload {
 #define STATUS_GRPS_BIT 19
 #define STATUS_RADAR_SENSOR_BIT 20
 #define STATUS_SOIL3_SENSOR_BIT 21
+#define STATUS_OD_SENSOR_BIT 22
 
 /* --------------------------------------------------------------------------
  *  Transmission Recovery

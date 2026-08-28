@@ -394,6 +394,187 @@ static int16_t soil5ReadAll(int16_t* values) {
 #endif /* SENSOR_SOIL_5TIP */
 
 /* ==================================================================
+ *  SENSOR: Optical Dissolved Oxygen (Aqualabo DIGISENS Modbus RTU)
+ *
+ *  DIGISENS sensors make measurement only after an order from the master:
+ *    1. Write 0x001F to register 0x0001 (start measurement of ALL parameters)
+ *    2. Wait sampling delay (read from 0x00A4 or fallback to 250ms)
+ *    3. Read 10 holding registers starting at 0x0053:
+ *         0x0053: Temperature (°C, float, 2 regs)
+ *         0x0055: Parameter 1 (Dissolved Oxygen mg/L or ppm, float, 2 regs)
+ *         0x0057: Parameter 2 (DO Saturation %, float, 2 regs)
+ *         0x0059: Parameter 3 (float, 2 regs)
+ *         0x005B: Parameter 4 (float, 2 regs)
+ * ================================================================== */
+#ifdef SENSOR_OD
+
+#include "modbus_rtu.h"
+#include <math.h>
+
+static HardwareSerial odSerial(2);
+
+static float decodeFloatFromRegisters(uint16_t firstRegister, uint16_t secondRegister, bool swapWords) {
+  union {
+    uint32_t u32;
+    float f32;
+  } value = {};
+
+  if (swapWords) {
+    value.u32 = (static_cast<uint32_t>(secondRegister) << 16) | static_cast<uint32_t>(firstRegister);
+  } else {
+    value.u32 = (static_cast<uint32_t>(firstRegister) << 16) | static_cast<uint32_t>(secondRegister);
+  }
+
+  return value.f32;
+}
+
+static inline bool isDigisensMeasurementError(uint16_t value) {
+  return value == 9999 || value == 9998 || value == 9996;
+}
+
+static inline bool isPlausibleMeasurement(float temperature, float od) {
+  return !isnan(temperature) && !isnan(od) && !isinf(temperature) && !isinf(od) &&
+         temperature >= -40.0f && temperature <= 125.0f && od >= 0.0f && od <= 500.0f;
+}
+
+/**
+ * @brief Reads all 5 measurements from the DIGISENS OD sensor.
+ *
+ * Performs:
+ *   1. Modbus write 0x001F -> reg 0x0001 (trigger measurement)
+ *   2. Delay sampling delay (reading 0x00A4 or fallback 250ms)
+ *   3. Modbus read 10 registers from 0x0053
+ *   4. Float decoding and scaling to int16_t:
+ *        values[0] = Temp (centi °C = °C * 100)
+ *        values[1] = DO (centi mg/L = mg/L * 100)
+ *        values[2] = DO %Sat (deci %Sat = % * 10)
+ *        values[3] = P3 (* 100)
+ *        values[4] = P4 (* 100)
+ *
+ * @param[out] values Array of 5 int16_t to receive converted values.
+ * @return 0 on success, -2 on comm failure, -5 on Modbus exception, -6 on invalid data.
+ */
+static int16_t odReadAll(int16_t* values) {
+  modbus_rtu::ModbusRtu modbus(odSerial);
+
+  modbus_rtu::ModbusRtu::Config cfg;
+  cfg.directionPin = OD_DE_RE_PIN;
+  cfg.manualDirection = true;
+  cfg.txActiveHigh = true;
+  cfg.responseTimeoutMs = 500;
+  cfg.txEnableGuardUs = 250;
+  cfg.txDisableGuardUs = 250;
+  cfg.interFrameGapMs = 4;
+  cfg.rxTurnaroundUs = 0;
+  modbus.configure(cfg);
+  modbus.begin(OD_BAUD, OD_RX_PIN, OD_TX_PIN);
+
+  // Clear stale RX buffer
+  modbus.clearRxBuffer();
+
+  // 1. Trigger measurement with retry
+  bool triggered = false;
+  modbus_rtu::ModbusRtu::WriteResult lastWriteRes;
+  for (int retry = 0; retry < 2 && !triggered; retry++) {
+    lastWriteRes =
+        modbus.writeSingleRegister(OD_SLAVE_ID, OD_MODBUS_REGISTER_ORDER, OD_MODBUS_ORDER_VALUE);
+    if (lastWriteRes.success) {
+      triggered = true;
+    } else {
+      if (retry == 0) {
+        delay(100);
+      }
+    }
+  }
+
+  if (!triggered) {
+#ifdef DEBUG
+    Logf("[OD][ERR] Trigger measurement failed: %s\n", lastWriteRes.error);
+#endif
+    return lastWriteRes.isException ? -5 : -2;
+  }
+
+  // 2. Read sampling delay or use default
+  uint32_t samplingDelayMs = OD_DEFAULT_SAMPLING_DELAY_MS;
+  auto delayRes = modbus.readRegisters(OD_SLAVE_ID, 0x03, OD_SAMPLING_DELAY_REG, 1);
+  if (delayRes.success && delayRes.count >= 1 && delayRes.values[0] > 0) {
+    samplingDelayMs = delayRes.values[0];
+  }
+  delay(samplingDelayMs);
+
+  // 3. Read 10 registers starting at 0x0053
+  auto readRes = modbus.readRegisters(OD_SLAVE_ID, 0x03, OD_MODBUS_START_ADDR, OD_MODBUS_READ_COUNT);
+  if (!readRes.success) {
+#ifdef DEBUG
+    Logf("[OD][ERR] Read registers failed: %s\n", readRes.error);
+#endif
+    return readRes.isException ? -5 : -2;
+  }
+
+  if (readRes.count < OD_MODBUS_READ_COUNT) {
+#ifdef DEBUG
+    Logf("[OD][ERR] Incomplete register response: %u/10\n", readRes.count);
+#endif
+    return -3;
+  }
+
+  // 4. Decode 5 floats (normal vs swapped word order)
+  float tempNormal = decodeFloatFromRegisters(readRes.values[0], readRes.values[1], false);
+  float doNormal = decodeFloatFromRegisters(readRes.values[2], readRes.values[3], false);
+  float satNormal = decodeFloatFromRegisters(readRes.values[4], readRes.values[5], false);
+  float p3Normal = decodeFloatFromRegisters(readRes.values[6], readRes.values[7], false);
+  float p4Normal = decodeFloatFromRegisters(readRes.values[8], readRes.values[9], false);
+
+  float tempSwapped = decodeFloatFromRegisters(readRes.values[0], readRes.values[1], true);
+  float doSwapped = decodeFloatFromRegisters(readRes.values[2], readRes.values[3], true);
+  float satSwapped = decodeFloatFromRegisters(readRes.values[4], readRes.values[5], true);
+  float p3Swapped = decodeFloatFromRegisters(readRes.values[6], readRes.values[7], true);
+  float p4Swapped = decodeFloatFromRegisters(readRes.values[8], readRes.values[9], true);
+
+  bool useSwapped = false;
+  if (!isPlausibleMeasurement(tempNormal, doNormal) && isPlausibleMeasurement(tempSwapped, doSwapped)) {
+    useSwapped = true;
+  }
+
+  float tempF = useSwapped ? tempSwapped : tempNormal;
+  float doF = useSwapped ? doSwapped : doNormal;
+  float satF = useSwapped ? satSwapped : satNormal;
+  float p3F = useSwapped ? p3Swapped : p3Normal;
+  float p4F = useSwapped ? p4Swapped : p4Normal;
+
+#ifdef DEBUG
+  Logf("[OD][DBG] T=%.2f C, DO=%.3f mg/L, Sat=%.2f %%, P3=%.2f, P4=%.2f (order=%s)\n", tempF, doF,
+       satF, p3F, p4F, useSwapped ? "swapped" : "normal");
+#endif
+
+  if (isDigisensMeasurementError(static_cast<uint16_t>(tempF)) ||
+      isDigisensMeasurementError(static_cast<uint16_t>(doF))) {
+#ifdef DEBUG
+    Logf("[OD][ERR] DIGISENS error code returned: T=%u, DO=%u\n", static_cast<uint16_t>(tempF),
+         static_cast<uint16_t>(doF));
+#endif
+    return -6;
+  }
+
+  if (!isPlausibleMeasurement(tempF, doF)) {
+#ifdef DEBUG
+    Logf("[OD][ERR] Decoded measurement implausible: T=%.2f, DO=%.3f\n", tempF, doF);
+#endif
+    return -6;
+  }
+
+  values[0] = static_cast<int16_t>(roundf(tempF * 100.0f)); // centi °C
+  values[1] = static_cast<int16_t>(roundf(doF * 100.0f));   // centi mg/L (e.g. 8.45 mg/L -> 845)
+  values[2] = static_cast<int16_t>(roundf(satF * 10.0f));   // deci %Sat (e.g. 98.5% -> 985)
+  values[3] = static_cast<int16_t>(roundf(p3F * 100.0f));
+  values[4] = static_cast<int16_t>(roundf(p4F * 100.0f));
+
+  return 0;
+}
+
+#endif /* SENSOR_OD */
+
+/* ==================================================================
  *  SENSOR: Battery voltage via ADC
  * ================================================================== */
 #ifdef SENSOR_BATTERY_ADC
@@ -744,6 +925,57 @@ void sensorReadAll(TelemetryPayload& tp) {
   }
 #endif /* SENSOR_SOIL_5TIP */
 
+  /* ---- Optical Dissolved Oxygen (OD) Sensor (Modbus RTU, RS-485) ---- */
+#ifdef SENSOR_OD
+  {
+#ifdef RS485_EN_PIN
+    setPinActive(RS485_EN_PIN, RS485_EN_ACTIVE_HIGH);
+#endif
+    // Release GPIO hold from deep sleep on direction pin
+    gpio_hold_dis((gpio_num_t)OD_DE_RE_PIN);
+
+    // Power on
+    setPinActive(OD_PWR_PIN, OD_PWR_ACTIVE_HIGH);
+    delay(OD_WARMUP_MS);
+
+    // Read samples — each sample reads 10 registers (5 floats)
+    uint8_t nread = 0;
+    unsigned long sampleStart = millis();
+    const unsigned long SAMPLE_TIMEOUT = 5000;
+
+    while (nread < OD_SAMPLE_COUNT && (millis() - sampleStart) < SAMPLE_TIMEOUT) {
+      int16_t values[OD_NUM_READINGS] = {0};
+      int16_t status = odReadAll(values);
+
+      if (status == 0) {
+        for (uint8_t i = 0; i < OD_NUM_READINGS; i++) {
+          tp.sensorReadings[readingIndex++] = values[i];
+        }
+        nread++;
+        if (nread < OD_SAMPLE_COUNT)
+          delay(200);
+      } else {
+        delay(100);
+      }
+    }
+
+    // Mark failure if no samples obtained
+    if (nread == 0) {
+#ifdef DEBUG
+      Logf("[OD] Incomplete: %d/%d samples obtained\n", nread, OD_SAMPLE_COUNT);
+#endif
+      tp.status = changeBit(tp.status, STATUS_OD_SENSOR_BIT, true);
+    }
+
+    // Power off
+    odSerial.end();
+    setPinInactive(OD_PWR_PIN, OD_PWR_ACTIVE_HIGH, false);
+#ifdef RS485_EN_PIN
+    setPinInactive(RS485_EN_PIN, RS485_EN_ACTIVE_HIGH, false);
+#endif
+  }
+#endif /* SENSOR_OD */
+
 /* ---- Battery ADC ---- */
 #ifdef SENSOR_BATTERY_ADC
   {
@@ -802,6 +1034,20 @@ int16_t readPrimarySensorRealtime() {
     realtimeSensorInit = true;
   }
   val = radarReadSingle();
+#elif defined(SENSOR_OD)
+  if (!realtimeSensorInit) {
+#ifdef RS485_EN_PIN
+    setPinActive(RS485_EN_PIN, RS485_EN_ACTIVE_HIGH);
+#endif
+    gpio_hold_dis((gpio_num_t)OD_DE_RE_PIN);
+    setPinActive(OD_PWR_PIN, OD_PWR_ACTIVE_HIGH);
+    delay(OD_WARMUP_MS);
+    realtimeSensorInit = true;
+  }
+  int16_t values[OD_NUM_READINGS] = {0};
+  if (odReadAll(values) == 0) {
+    val = values[1]; // Return DO in centi-mg/L (e.g. 8472 for 84.72 mg/L)
+  }
 #endif
 
   return val;
@@ -817,6 +1063,12 @@ void stopPrimarySensorRealtime() {
 #elif defined(SENSOR_RADAR)
   radarSerial.end();
   setPinInactive(RADAR_PWR_PIN, RADAR_PWR_ACTIVE_HIGH, false);
+#elif defined(SENSOR_OD)
+  odSerial.end();
+  setPinInactive(OD_PWR_PIN, OD_PWR_ACTIVE_HIGH, false);
+#ifdef RS485_EN_PIN
+  setPinInactive(RS485_EN_PIN, RS485_EN_ACTIVE_HIGH, false);
+#endif
 #endif
 
   realtimeSensorInit = false;

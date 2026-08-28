@@ -30,6 +30,9 @@ extern BLECharacteristic* pNotifyCharacteristic;
 /** Flag indicating active real-time sensor streaming requested by "Send" command. */
 extern bool bleRealtimeSendActive;
 
+/** Interval in milliseconds between real-time monitoring and recording cycles (default: 5000ms). */
+extern uint32_t bleMonitorIntervalMs;
+
 /** Set by BLE disconnect callback when advertising needs to be safely restarted from loop(). */
 extern bool bleRestartAdvertisingRequested;
 

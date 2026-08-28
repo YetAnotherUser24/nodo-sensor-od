@@ -12,6 +12,7 @@
  *   -DSENSOR_RADAR             = Radar distance sensor (Modbus RTU)
  *   -DSENSOR_SOIL_3TIP         = 3-probe soil moisture/temperature (Modbus RTU)
  *   -DSENSOR_SOIL_5TIP         = 5-probe soil comprehensive (Modbus RTU)
+ *   -DSENSOR_OD                = Optical dissolved oxygen DIGISENS sensor (Modbus RTU)
  *   -DSENSOR_BATTERY_ADC       = Battery voltage via ADC
  *   -DSENSOR_INA226            = INA226 voltage/current monitor (I2C)
  */

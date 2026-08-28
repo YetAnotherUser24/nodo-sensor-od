@@ -30,7 +30,9 @@
  */
 inline void setPinActive(int pin, bool activeHigh) {
   if (pin != -1) {
-    gpio_hold_dis((gpio_num_t)pin);
+    if (GPIO_IS_VALID_OUTPUT_GPIO(pin)) {
+      gpio_hold_dis((gpio_num_t)pin);
+    }
     pinMode(pin, OUTPUT);
     digitalWrite(pin, activeHigh ? HIGH : LOW);
   }
@@ -56,7 +58,7 @@ inline void setPinInactive(int pin, bool activeHigh, bool holdInSleep = false) {
   if (pin != -1) {
     pinMode(pin, OUTPUT);
     digitalWrite(pin, activeHigh ? LOW : HIGH);
-    if (holdInSleep) {
+    if (holdInSleep && GPIO_IS_VALID_OUTPUT_GPIO(pin)) {
       gpio_hold_en((gpio_num_t)pin);
     }
   }
@@ -196,6 +198,26 @@ inline void setPinInactive(int pin, bool activeHigh, bool holdInSleep = false) {
 #endif
 #ifndef RADAR_PWR_ACTIVE_HIGH
 #define RADAR_PWR_ACTIVE_HIGH true
+#endif
+
+/* OD Sensor Pins (Modbus RTU over RS-485) */
+#ifndef OD_RX_PIN
+#define OD_RX_PIN 16
+#endif
+
+#ifndef OD_TX_PIN
+#define OD_TX_PIN 17
+#endif
+
+#ifndef OD_DE_RE_PIN
+#define OD_DE_RE_PIN 2
+#endif
+
+#ifndef OD_PWR_PIN
+#define OD_PWR_PIN 12
+#endif
+#ifndef OD_PWR_ACTIVE_HIGH
+#define OD_PWR_ACTIVE_HIGH true
 #endif
 
 /* ==========================================================================
@@ -383,6 +405,26 @@ inline void setPinInactive(int pin, bool activeHigh, bool holdInSleep = false) {
 #define RADAR_PWR_ACTIVE_HIGH true
 #endif
 
+/* OD Sensor Pins (Modbus RTU over RS-485) */
+#ifndef OD_RX_PIN
+#define OD_RX_PIN 34
+#endif
+
+#ifndef OD_TX_PIN
+#define OD_TX_PIN 32
+#endif
+
+#ifndef OD_DE_RE_PIN
+#define OD_DE_RE_PIN 0
+#endif
+
+#ifndef OD_PWR_PIN
+#define OD_PWR_PIN 19
+#endif
+#ifndef OD_PWR_ACTIVE_HIGH
+#define OD_PWR_ACTIVE_HIGH true
+#endif
+
 /* Battery ADC Pin */
 #ifndef BOARD_BAT_ADC_PIN
 #define BOARD_BAT_ADC_PIN 35
@@ -440,6 +482,9 @@ inline void boardInit() {
 #endif
 #ifdef RADAR_PWR_PIN
   setPinInactive(RADAR_PWR_PIN, RADAR_PWR_ACTIVE_HIGH);
+#endif
+#ifdef OD_PWR_PIN
+  setPinInactive(OD_PWR_PIN, OD_PWR_ACTIVE_HIGH);
 #endif
 #ifdef WATER_TEMP_PWR_PIN
   setPinInactive(WATER_TEMP_PWR_PIN, WATER_TEMP_PWR_ACTIVE_HIGH);

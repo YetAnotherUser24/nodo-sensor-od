@@ -112,7 +112,7 @@ void prepareForDeepSleep(int minutes) {
   digitalWrite(LED_PIN, LOW);
 
 // Lock sensor power/control pins inactive through deep sleep with GPIO hold enabled
-#if defined(SENSOR_SOIL_3TIP) || defined(SENSOR_SOIL_5TIP)
+#if defined(SENSOR_SOIL_3TIP) || defined(SENSOR_SOIL_5TIP) || defined(SENSOR_OD)
 #ifdef RS485_EN_PIN
   setPinInactive(RS485_EN_PIN, RS485_EN_ACTIVE_HIGH, true);
 #endif
@@ -133,6 +133,12 @@ void prepareForDeepSleep(int minutes) {
   setPinInactive(SOIL5_DE_RE_PIN, true, true);
   setPinInput(SOIL5_RX_PIN);
   setPinInput(SOIL5_TX_PIN);
+#endif
+#ifdef SENSOR_OD
+  setPinInactive(OD_PWR_PIN, OD_PWR_ACTIVE_HIGH, true);
+  setPinInactive(OD_DE_RE_PIN, true, true);
+  setPinInput(OD_RX_PIN);
+  setPinInput(OD_TX_PIN);
 #endif
 #ifdef SENSOR_MAXBOTIX_UART
   setPinInactive(MAXBOTIX_PWR_PIN, MAXBOTIX_PWR_ACTIVE_HIGH, true);

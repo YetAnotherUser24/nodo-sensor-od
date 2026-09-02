@@ -128,6 +128,7 @@ SEND
 - Starts continuous measurement and data recording.
 - **Default interval**: 5 seconds (or specify custom interval like `MONITOR-10` for 10 seconds).
 - **Data Saving**: Each interval runs `takeMeasurement()`, saving complete measurement records (RTC timestamp, temperature, sensor channels, battery, status) into **EEPROM** and automatically rotating into **SD card CSV** files.
+- **OLED 1.3" Visualization**: Constantly renders real-time sensor measurements (e.g. DO mg/L, %Sat, Temperature, Battery voltage, interval, RTC clock) onto an attached 1.3" SH1106 I2C OLED display.
 - **BLE Notification**: Pushes the live reading (e.g. Dissolved Oxygen) to connected BLE client characteristics (`...a8` and `...a9`).
 - Keeps BLE connection active while monitoring.
 

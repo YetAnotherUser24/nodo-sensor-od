@@ -21,6 +21,7 @@
 #include "board.h"
 #include "log.h"
 #include "n_logger_config.h"
+#include "oled_display.h"
 #include "rtc_utils.h"
 #include "sensor_engine.h"
 
@@ -106,6 +107,8 @@ void boardRadiosOff() {
  */
 void prepareForDeepSleep(int minutes) {
   int interval = (minutes <= 0) ? 1 : minutes;
+
+  oledPowerOff();
 
   sdBusSuspend();
 

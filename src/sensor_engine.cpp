@@ -14,9 +14,23 @@
 #include "sensor_engine.h"
 #include "log.h"
 #include "n_logger_config.h"
+#include "oled_display.h"
 
 #include <HardwareSerial.h>
 #include <esp32-hal-adc.h>
+
+/**
+ * @brief Safely de-energizes a sensor power/enable pin without turning off the 3.3V I2C OLED rail
+ *        if that pin is shared with I2C_EN_PIN.
+ */
+static inline void safePowerDownSensorPin(int pin, bool activeHigh) {
+  if (pin != -1) {
+    if (isOledAvailable() && pin == I2C_EN_PIN) {
+      return;
+    }
+    setPinInactive(pin, activeHigh, false);
+  }
+}
 
 /* ==================================================================
  *  SENSOR: MaxBotix MB12xx Ultrasonic (UART)
@@ -725,7 +739,7 @@ void sensorReadAll(TelemetryPayload& tp) {
 
     // Power off
     maxbotixSerial.end();
-    setPinInactive(MAXBOTIX_PWR_PIN, MAXBOTIX_PWR_ACTIVE_HIGH, false);
+    safePowerDownSensorPin(MAXBOTIX_PWR_PIN, MAXBOTIX_PWR_ACTIVE_HIGH);
   }
 #endif /* SENSOR_MAXBOTIX_UART */
 
@@ -866,9 +880,9 @@ void sensorReadAll(TelemetryPayload& tp) {
 
     // Power off
     soilSerial.end();
-    setPinInactive(SOIL3_PWR_PIN, SOIL3_PWR_ACTIVE_HIGH, false);
+    safePowerDownSensorPin(SOIL3_PWR_PIN, SOIL3_PWR_ACTIVE_HIGH);
 #ifdef RS485_EN_PIN
-    setPinInactive(RS485_EN_PIN, RS485_EN_ACTIVE_HIGH, false);
+    safePowerDownSensorPin(RS485_EN_PIN, RS485_EN_ACTIVE_HIGH);
 #endif
   }
 #endif /* SENSOR_SOIL_3TIP */
@@ -918,9 +932,9 @@ void sensorReadAll(TelemetryPayload& tp) {
 
     // Power off
     soil5Serial.end();
-    setPinInactive(SOIL5_PWR_PIN, SOIL5_PWR_ACTIVE_HIGH, false);
+    safePowerDownSensorPin(SOIL5_PWR_PIN, SOIL5_PWR_ACTIVE_HIGH);
 #ifdef RS485_EN_PIN
-    setPinInactive(RS485_EN_PIN, RS485_EN_ACTIVE_HIGH, false);
+    safePowerDownSensorPin(RS485_EN_PIN, RS485_EN_ACTIVE_HIGH);
 #endif
   }
 #endif /* SENSOR_SOIL_5TIP */
@@ -969,9 +983,9 @@ void sensorReadAll(TelemetryPayload& tp) {
 
     // Power off
     odSerial.end();
-    setPinInactive(OD_PWR_PIN, OD_PWR_ACTIVE_HIGH, false);
+    safePowerDownSensorPin(OD_PWR_PIN, OD_PWR_ACTIVE_HIGH);
 #ifdef RS485_EN_PIN
-    setPinInactive(RS485_EN_PIN, RS485_EN_ACTIVE_HIGH, false);
+    safePowerDownSensorPin(RS485_EN_PIN, RS485_EN_ACTIVE_HIGH);
 #endif
   }
 #endif /* SENSOR_OD */
@@ -1059,15 +1073,15 @@ void stopPrimarySensorRealtime() {
 
 #ifdef SENSOR_MAXBOTIX_UART
   maxbotixSerial.end();
-  setPinInactive(MAXBOTIX_PWR_PIN, MAXBOTIX_PWR_ACTIVE_HIGH, false);
+  safePowerDownSensorPin(MAXBOTIX_PWR_PIN, MAXBOTIX_PWR_ACTIVE_HIGH);
 #elif defined(SENSOR_RADAR)
   radarSerial.end();
-  setPinInactive(RADAR_PWR_PIN, RADAR_PWR_ACTIVE_HIGH, false);
+  safePowerDownSensorPin(RADAR_PWR_PIN, RADAR_PWR_ACTIVE_HIGH);
 #elif defined(SENSOR_OD)
   odSerial.end();
-  setPinInactive(OD_PWR_PIN, OD_PWR_ACTIVE_HIGH, false);
+  safePowerDownSensorPin(OD_PWR_PIN, OD_PWR_ACTIVE_HIGH);
 #ifdef RS485_EN_PIN
-  setPinInactive(RS485_EN_PIN, RS485_EN_ACTIVE_HIGH, false);
+  safePowerDownSensorPin(RS485_EN_PIN, RS485_EN_ACTIVE_HIGH);
 #endif
 #endif
 

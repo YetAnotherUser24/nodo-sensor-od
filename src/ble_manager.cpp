@@ -25,6 +25,7 @@
 #include "n_logger_config.h"
 #include "board.h"
 #include "measurement_storage.h"
+#include "oled_display.h"
 
 /* ------------------------ External Dependencies ------------------------ */
 
@@ -139,15 +140,13 @@ class ServerConnectionCallbacks : public BLEServerCallbacks {
   void onDisconnect(BLEServer* server) override {
     bleInCallback = true;
     Logln("BLE: Device disconnected");
-    bool wasIntentionalStop = !bleRealtimeSendActive; // STOP was sent before disconnect
     bleDeviceConnected = false;
-    bleRealtimeSendActive = false;
     bleRestartAdvertisingRequested = true;
-    if (!wasIntentionalStop) {
-      // Unexpected disconnect during streaming → give full reconnection window
-      bleStartTime = millis();
+    if (!bleRealtimeSendActive) {
+      oledPowerOff();
     }
-    // else: STOP was sent intentionally → keep existing bleStartTime (sleep sooner)
+    // Refresh active window so advertising remains alive for reconnect
+    bleStartTime = millis();
     digitalWrite(LED_PIN, LOW);
     bleInCallback = false;
   }
@@ -330,6 +329,7 @@ void processCommand(const String& cmdIn) {
     }
     bleMonitorIntervalMs = intervalSec * 1000UL;
     bleRealtimeSendActive = true;
+    oledShowMonitorStart(intervalSec);
     Logf("Continuous monitoring & recording ENABLED (interval: %u s)\n", intervalSec);
     bleLedBlinks = 1;
   }
@@ -338,6 +338,7 @@ void processCommand(const String& cmdIn) {
   else if (cmd == "STOP") {
     bleRealtimeSendActive = false;
     bleStreamingActive = false;
+    oledShowMonitorStop();
     Logln("Continuous monitoring DISABLED (STOP)");
     bleLedBlinks = 1;
   }

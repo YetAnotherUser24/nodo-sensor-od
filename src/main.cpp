@@ -17,6 +17,7 @@
 #include "measurement_storage.h"
 #include "modem_mqtt.h"
 #include "n_logger_config.h"
+#include "oled_display.h"
 #include "power_sleep.h"
 #include "rtc_utils.h"
 #include "sensor_engine.h"
@@ -494,7 +495,7 @@ void loop() {
     }
 
     /* Continuous monitoring and storage loop ("MONITOR" / "SEND" command) */
-    if (bleRealtimeSendActive && bleDeviceConnected && pServer != nullptr) {
+    if (bleRealtimeSendActive) {
       static unsigned long lastMonitorSample = 0;
       if (millis() - lastMonitorSample >= bleMonitorIntervalMs) {
         lastMonitorSample = millis();
@@ -502,40 +503,48 @@ void loop() {
         // 1. Full measurement cycle: samples all sensors, RTC, battery, and saves to EEPROM / SD
         takeMeasurement();
 
-        // 2. Extract primary measurement for BLE notification
-        int16_t primaryReading = 0;
+        // 2. Constant OLED visualization on SH1106 display for MONITOR mode
+        oledUpdateMonitor(telemetryPayload, rtcNow, bleMonitorIntervalMs / 1000);
+
+        // 3. Extract primary measurement for BLE notification (if client connected)
+        if (bleDeviceConnected && pServer != nullptr) {
+          int16_t primaryReading = 0;
 #ifdef SENSOR_OD
-        primaryReading = telemetryPayload.sensorReadings[1]; // DO in centi-mg/L (e.g. 8472 -> 84.72 mg/L)
+          primaryReading = telemetryPayload.sensorReadings[1]; // DO in centi-mg/L (e.g. 8472 -> 84.72 mg/L)
 #else
-        primaryReading = telemetryPayload.sensorReadings[0];
+          primaryReading = telemetryPayload.sensorReadings[0];
 #endif
 
-        static char readingBuf[16];
-        itoa(primaryReading, readingBuf, 10);
+          static char readingBuf[16];
+          itoa(primaryReading, readingBuf, 10);
 
-        if (pNotifyCharacteristic != nullptr) {
-          pNotifyCharacteristic->setValue((const char*)readingBuf);
-          pNotifyCharacteristic->notify();
-        }
-        if (pCharacteristic != nullptr) {
-          pCharacteristic->setValue((const char*)readingBuf);
-          pCharacteristic->notify();
-        }
-        delay(10); // yield briefly to let BLE BTC task flush GATT packet safely
+          if (pNotifyCharacteristic != nullptr) {
+            pNotifyCharacteristic->setValue((const char*)readingBuf);
+            pNotifyCharacteristic->notify();
+          }
+          if (pCharacteristic != nullptr) {
+            pCharacteristic->setValue((const char*)readingBuf);
+            pCharacteristic->notify();
+          }
+          delay(10); // yield briefly to let BLE BTC task flush GATT packet safely
 
 #ifdef SENSOR_OD
-        Logf("[MONITOR] Saved & Sent DO: %d.%02d mg/L (%s)\n", primaryReading / 100,
-             abs(primaryReading % 100), readingBuf);
+          Logf("[MONITOR] Saved & Sent DO: %d.%02d mg/L (%s)\n", primaryReading / 100,
+               abs(primaryReading % 100), readingBuf);
 #else
-        Logf("[MONITOR] Saved & Sent: %s\n", readingBuf);
+          Logf("[MONITOR] Saved & Sent: %s\n", readingBuf);
 #endif
+        } else {
+#ifdef SENSOR_OD
+          Logf("[MONITOR] Saved DO: %d.%02d mg/L (Client disconnected)\n",
+               telemetryPayload.sensorReadings[1] / 100,
+               abs(telemetryPayload.sensorReadings[1] % 100));
+#else
+          Logf("[MONITOR] Saved: %d (Client disconnected)\n", telemetryPayload.sensorReadings[0]);
+#endif
+        }
 
         bleStartTime = millis(); // Refresh BLE active window while monitoring is active
-      }
-    } else {
-      // Only kill monitoring on actual disconnect
-      if (!bleDeviceConnected) {
-        bleRealtimeSendActive = false;
       }
     }
 

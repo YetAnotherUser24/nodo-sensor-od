@@ -665,20 +665,10 @@ void getFilename(const RtcDateTime& ts) {
 #ifdef SD_MODULE
 static void writeCsvHeader(SdFile& file) {
   file.print(F("datetime, seconds_since_2000"));
-#if defined(SENSOR_OD)
-  file.print(F(", water_temp_centi, do_centi_mg_l, do_sat_deci_pct, param3_centi, param4_centi"));
-#elif defined(SENSOR_RADAR) || defined(SENSOR_MAXBOTIX_UART)
-  file.print(F(", distance_mm"));
-#elif defined(SENSOR_SOIL_3TIP)
-  file.print(F(", moisture_centi_pct, soil_temp_centi, ec_us_cm"));
-#elif defined(SENSOR_SOIL_5TIP)
-  file.print(F(", moisture_centi_pct, soil_temp_centi, ec_us_cm, ph_centi, npk_n, npk_p, npk_k"));
-#endif
-
+  file.print(F(", water_temp_centi, do_milli_mg_l, do_sat_deci_pct, param3_centi, param4_centi"));
 #if defined(SENSOR_BATTERY_ADC) || defined(SENSOR_INA226)
   file.print(F(", battery_mv"));
 #endif
-
   file.println(F(", rtc_temp_centi, status, sent"));
   file.flush();
 }

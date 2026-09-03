@@ -114,48 +114,17 @@ void prepareForDeepSleep(int minutes) {
 
   digitalWrite(LED_PIN, LOW);
 
-// Lock sensor power/control pins inactive through deep sleep with GPIO hold enabled
-#if defined(SENSOR_SOIL_3TIP) || defined(SENSOR_SOIL_5TIP) || defined(SENSOR_OD)
+  // Lock sensor power/control pins inactive through deep sleep with GPIO hold enabled
 #ifdef RS485_EN_PIN
   setPinInactive(RS485_EN_PIN, RS485_EN_ACTIVE_HIGH, true);
 #endif
-#endif
-#ifdef SENSOR_SOIL_3TIP
-  setPinInactive(SOIL3_PWR_PIN, SOIL3_PWR_ACTIVE_HIGH, true);
-  setPinInactive(SOIL3_DE_RE_PIN, true, true);
-  setPinInput(SOIL3_RX_PIN);
-  setPinInput(SOIL3_TX_PIN);
-#endif
-#ifdef SENSOR_RADAR
-  setPinInactive(RADAR_PWR_PIN, RADAR_PWR_ACTIVE_HIGH, true);
-  setPinInput(RADAR_RX_PIN);
-  setPinInput(RADAR_TX_PIN);
-#endif
-#ifdef SENSOR_SOIL_5TIP
-  setPinInactive(SOIL5_PWR_PIN, SOIL5_PWR_ACTIVE_HIGH, true);
-  setPinInactive(SOIL5_DE_RE_PIN, true, true);
-  setPinInput(SOIL5_RX_PIN);
-  setPinInput(SOIL5_TX_PIN);
-#endif
-#ifdef SENSOR_OD
   setPinInactive(OD_PWR_PIN, OD_PWR_ACTIVE_HIGH, true);
   setPinInactive(OD_DE_RE_PIN, true, true);
   setPinInput(OD_RX_PIN);
   setPinInput(OD_TX_PIN);
-#endif
-#ifdef SENSOR_MAXBOTIX_UART
-  setPinInactive(MAXBOTIX_PWR_PIN, MAXBOTIX_PWR_ACTIVE_HIGH, true);
-  setPinInput(MAXBOTIX_RX_PIN);
-  setPinInput(MAXBOTIX_TX_PIN);
-#endif
-#if defined(SENSOR_WATER_TEMP) || defined(SENSOR_MLX90614)
-#if WATER_TEMP_PWR_PIN != -1
-  setPinInactive(WATER_TEMP_PWR_PIN, WATER_TEMP_PWR_ACTIVE_HIGH, true);
-#endif
-#endif
 
-// Put INA226 into power-down mode before deep sleep
-// (I2C command, no GPIO needed — chip enters low-quiescent-current shutdown)
+  // Put INA226 into power-down mode before deep sleep
+  // (I2C command, no GPIO needed — chip enters low-quiescent-current shutdown)
 #ifdef SENSOR_INA226
   ina226PowerDown();
 #endif

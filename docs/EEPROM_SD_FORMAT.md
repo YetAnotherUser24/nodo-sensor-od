@@ -139,7 +139,7 @@ The header is automatically generated on the first line when a daily CSV file is
 
 - **OD Digisens (`SENSOR_OD`)**:
   ```csv
-  datetime, seconds_since_2000, water_temp_centi, do_centi_mg_l, do_sat_deci_pct, param3_centi, param4_centi, battery_mv, rtc_temp_centi, status, sent
+  datetime, seconds_since_2000, water_temp_centi, do_milli_mg_l, do_sat_deci_pct, param3_centi, param4_centi, battery_mv, rtc_temp_centi, status, sent
   ```
 - **Radar (`SENSOR_RADAR`) / Maxbotix (`SENSOR_MAXBOTIX_UART`)**:
   ```csv
@@ -163,7 +163,7 @@ The header is automatically generated on the first line when a daily CSV file is
 |--------|---------|
 | `datetime` | Human‑readable RTC timestamp (`YYYY/MM/DD HH:MM:SS`) |
 | `seconds_since_2000` | Unix-style seconds offset from 2000/01/01 00:00:00 |
-| Sensor Channels | Sensor readings scaled to `int16_t` (e.g. `water_temp_centi`, `do_centi_mg_l`) |
+| Sensor Channels | Sensor readings scaled to `int16_t` (e.g. `water_temp_centi`, `do_milli_mg_l`) |
 | `battery_mv` | Battery voltage in millivolts |
 | `rtc_temp_centi` | DS3231 RTC internal temperature (°C * 100) |
 | `status` | 32-bit hardware status bitmask |

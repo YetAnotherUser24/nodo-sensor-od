@@ -148,58 +148,6 @@ inline void setPinInactive(int pin, bool activeHigh, bool holdInSleep = false) {
 #define RS485_EN_ACTIVE_HIGH false
 #endif
 
-/* Soil Sensor Pins */
-#ifndef SOIL3_RX_PIN
-#define SOIL3_RX_PIN 16
-#endif
-
-#ifndef SOIL3_TX_PIN
-#define SOIL3_TX_PIN 17
-#endif
-
-#ifndef SOIL3_DE_RE_PIN
-#define SOIL3_DE_RE_PIN 2
-#endif
-
-#ifndef SOIL3_PWR_PIN
-#define SOIL3_PWR_PIN 12
-#endif
-#ifndef SOIL3_PWR_ACTIVE_HIGH
-#define SOIL3_PWR_ACTIVE_HIGH true
-#endif
-
-/* MaxBotix Sensor Pins */
-#ifndef MAXBOTIX_RX_PIN
-#define MAXBOTIX_RX_PIN 34
-#endif
-
-#ifndef MAXBOTIX_TX_PIN
-#define MAXBOTIX_TX_PIN -1
-#endif
-
-#ifndef MAXBOTIX_PWR_PIN
-#define MAXBOTIX_PWR_PIN 27
-#endif
-#ifndef MAXBOTIX_PWR_ACTIVE_HIGH
-#define MAXBOTIX_PWR_ACTIVE_HIGH true
-#endif
-
-/* Radar Sensor Pins */
-#ifndef RADAR_RX_PIN
-#define RADAR_RX_PIN 34
-#endif
-
-#ifndef RADAR_TX_PIN
-#define RADAR_TX_PIN 14
-#endif
-
-#ifndef RADAR_PWR_PIN
-#define RADAR_PWR_PIN 12
-#endif
-#ifndef RADAR_PWR_ACTIVE_HIGH
-#define RADAR_PWR_ACTIVE_HIGH true
-#endif
-
 /* OD Sensor Pins (Modbus RTU over RS-485) */
 #ifndef OD_RX_PIN
 #define OD_RX_PIN 16
@@ -353,58 +301,6 @@ inline void setPinInactive(int pin, bool activeHigh, bool holdInSleep = false) {
 #define RS485_EN_ACTIVE_HIGH true
 #endif
 
-/* Soil Sensor Pins */
-#ifndef SOIL3_RX_PIN
-#define SOIL3_RX_PIN 34
-#endif
-
-#ifndef SOIL3_TX_PIN
-#define SOIL3_TX_PIN 32
-#endif
-
-#ifndef SOIL3_DE_RE_PIN
-#define SOIL3_DE_RE_PIN 0
-#endif
-
-#ifndef SOIL3_PWR_PIN
-#define SOIL3_PWR_PIN 19
-#endif
-#ifndef SOIL3_PWR_ACTIVE_HIGH
-#define SOIL3_PWR_ACTIVE_HIGH true
-#endif
-
-/* MaxBotix Sensor Pins */
-#ifndef MAXBOTIX_RX_PIN
-#define MAXBOTIX_RX_PIN 34
-#endif
-
-#ifndef MAXBOTIX_TX_PIN
-#define MAXBOTIX_TX_PIN -1
-#endif
-
-#ifndef MAXBOTIX_PWR_PIN
-#define MAXBOTIX_PWR_PIN 18
-#endif
-#ifndef MAXBOTIX_PWR_ACTIVE_HIGH
-#define MAXBOTIX_PWR_ACTIVE_HIGH true
-#endif
-
-/* Radar Sensor Pins */
-#ifndef RADAR_RX_PIN
-#define RADAR_RX_PIN 34
-#endif
-
-#ifndef RADAR_TX_PIN
-#define RADAR_TX_PIN 32
-#endif
-
-#ifndef RADAR_PWR_PIN
-#define RADAR_PWR_PIN 19
-#endif
-#ifndef RADAR_PWR_ACTIVE_HIGH
-#define RADAR_PWR_ACTIVE_HIGH true
-#endif
-
 /* OD Sensor Pins (Modbus RTU over RS-485) */
 #ifndef OD_RX_PIN
 #define OD_RX_PIN 34
@@ -471,23 +367,8 @@ inline void boardInit() {
   setPinInactive(RS485_EN_PIN, RS485_EN_ACTIVE_HIGH);
 #endif
   setPinInactive(EN_5V_PIN, EN_5V_ACTIVE_HIGH);
-#ifdef SOIL3_PWR_PIN
-  setPinInactive(SOIL3_PWR_PIN, SOIL3_PWR_ACTIVE_HIGH);
-#endif
-#ifdef SOIL5_PWR_PIN
-  setPinInactive(SOIL5_PWR_PIN, SOIL5_PWR_ACTIVE_HIGH);
-#endif
-#ifdef MAXBOTIX_PWR_PIN
-  setPinInactive(MAXBOTIX_PWR_PIN, MAXBOTIX_PWR_ACTIVE_HIGH);
-#endif
-#ifdef RADAR_PWR_PIN
-  setPinInactive(RADAR_PWR_PIN, RADAR_PWR_ACTIVE_HIGH);
-#endif
 #ifdef OD_PWR_PIN
   setPinInactive(OD_PWR_PIN, OD_PWR_ACTIVE_HIGH);
-#endif
-#ifdef WATER_TEMP_PWR_PIN
-  setPinInactive(WATER_TEMP_PWR_PIN, WATER_TEMP_PWR_ACTIVE_HIGH);
 #endif
   setPinInactive(I2C_EN_PIN, I2C_EN_ACTIVE_HIGH);
 }

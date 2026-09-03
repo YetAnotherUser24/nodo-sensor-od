@@ -1,13 +1,12 @@
 /**
  * @file main.cpp
- * @brief Main application entry point for n-logger multi-sensor platform.
+ * @brief Main application entry point for OD-Logger telemetry system.
  *
- * Replaces the monolithic n_level_gprs.ino. Composes modular components
- * with compile-time feature toggles (SD_MODULE, GPRS_MODULE).
+ * Dedicated to the Aqualabo DIGISENS Optical Dissolved Oxygen (OD) sensor.
+ * Modular components with compile-time feature toggles (SD_MODULE, GPRS_MODULE).
  * BLE and EEPROM are always included.
  *
- * Build identity: N_LOGGER_DEVICE_NAME (default "n-logger")
- * Sensor type: selected via descriptive build flags (e.g. -DSENSOR_MAXBOTIX_UART)
+ * Build identity: N_LOGGER_DEVICE_NAME (default "od-logger")
  */
 
 #include "ble_manager.h"
@@ -508,12 +507,8 @@ void loop() {
 
         // 3. Extract primary measurement for BLE notification (if client connected)
         if (bleDeviceConnected && pServer != nullptr) {
-          int16_t primaryReading = 0;
-#ifdef SENSOR_OD
-          primaryReading = telemetryPayload.sensorReadings[1]; // DO in centi-mg/L (e.g. 8472 -> 84.72 mg/L)
-#else
-          primaryReading = telemetryPayload.sensorReadings[0];
-#endif
+          int16_t primaryReading =
+              telemetryPayload.sensorReadings[1]; // DO in milli-mg/L (e.g. 8456 -> 8.456 mg/L)
 
           static char readingBuf[16];
           itoa(primaryReading, readingBuf, 10);
@@ -528,20 +523,12 @@ void loop() {
           }
           delay(10); // yield briefly to let BLE BTC task flush GATT packet safely
 
-#ifdef SENSOR_OD
-          Logf("[MONITOR] Saved & Sent DO: %d.%02d mg/L (%s)\n", primaryReading / 100,
-               abs(primaryReading % 100), readingBuf);
-#else
-          Logf("[MONITOR] Saved & Sent: %s\n", readingBuf);
-#endif
+          Logf("[MONITOR] Saved & Sent DO: %d.%03d mg/L (%s)\n", primaryReading / 1000,
+               abs(primaryReading % 1000), readingBuf);
         } else {
-#ifdef SENSOR_OD
-          Logf("[MONITOR] Saved DO: %d.%02d mg/L (Client disconnected)\n",
-               telemetryPayload.sensorReadings[1] / 100,
-               abs(telemetryPayload.sensorReadings[1] % 100));
-#else
-          Logf("[MONITOR] Saved: %d (Client disconnected)\n", telemetryPayload.sensorReadings[0]);
-#endif
+          Logf("[MONITOR] Saved DO: %d.%03d mg/L (Client disconnected)\n",
+               telemetryPayload.sensorReadings[1] / 1000,
+               abs(telemetryPayload.sensorReadings[1] % 1000));
         }
 
         bleStartTime = millis(); // Refresh BLE active window while monitoring is active

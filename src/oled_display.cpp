@@ -214,24 +214,7 @@ void oledUpdateMonitor(const TelemetryPayload& tp, const RtcDateTime& dt, uint32
   oledDisplay.fillRect(0, 0, OLED_WIDTH, 11, 1);
   oledDisplay.setTextColor(0, 1);
   oledDisplay.setTextSize(1);
-  oledDisplay.setCursor(2, 2);
-#if defined(SENSOR_OD)
   oledDisplay.print("MONITOR: OD DIGISENS");
-#elif defined(SENSOR_RADAR)
-  oledDisplay.print("MONITOR: RADAR");
-#elif defined(SENSOR_MAXBOTIX_UART)
-  oledDisplay.print("MONITOR: MAXBOTIX");
-#elif defined(SENSOR_SOIL_3TIP)
-  oledDisplay.print("MONITOR: SOIL-3P");
-#elif defined(SENSOR_SOIL_5TIP)
-  oledDisplay.print("MONITOR: SOIL-5P");
-#elif defined(SENSOR_WATER_TEMP)
-  oledDisplay.print("MONITOR: WATER-TEMP");
-#elif defined(SENSOR_INA226)
-  oledDisplay.print("MONITOR: INA226");
-#else
-  oledDisplay.print("MONITOR: SENSOR");
-#endif
 
   // Measurement readings
   oledDisplay.setTextColor(1);
@@ -242,15 +225,13 @@ void oledUpdateMonitor(const TelemetryPayload& tp, const RtcDateTime& dt, uint32
                     (unsigned int)dt.Second(), bleDeviceConnected ? "[BLE]" : "[ADV]",
                     (unsigned int)intervalSec);
 
-#if defined(SENSOR_OD)
-  float doValue = tp.sensorReadings[1] / 100.0f;
+  float doValue = tp.sensorReadings[1] / 1000.0f;
   float satValue = tp.sensorReadings[2] / 10.0f;
   float tempValue = tp.sensorReadings[0] / 100.0f;
   float p3Value = tp.sensorReadings[3] / 100.0f;
-  float p4Value = tp.sensorReadings[4] / 100.0f;
 
   oledDisplay.setCursor(0, 23);
-  oledDisplay.printf("DO:   %.2f mg/L", doValue);
+  oledDisplay.printf("DO:   %.3f mg/L", doValue);
 
   oledDisplay.setCursor(0, 33);
   oledDisplay.printf("Sat:  %.1f %%Sat", satValue);
@@ -262,105 +243,7 @@ void oledUpdateMonitor(const TelemetryPayload& tp, const RtcDateTime& dt, uint32
 #if defined(SENSOR_BATTERY_ADC) || defined(SENSOR_INA226)
   oledDisplay.printf("Bat:%.2fV P3:%.1f", tp.battery / 1000.0f, p3Value);
 #else
-  oledDisplay.printf("P3:%.2f P4:%.2f", p3Value, p4Value);
-#endif
-
-#elif defined(SENSOR_MAXBOTIX_UART) || defined(SENSOR_RADAR)
-  int16_t dist = tp.sensorReadings[0];
-  float tempValue = tp.temperature / 100.0f;
-
-  oledDisplay.setCursor(0, 24);
-  oledDisplay.printf("Dist: %d mm", (int)dist);
-
-  oledDisplay.setCursor(0, 35);
-  oledDisplay.printf("Temp: %.2f C", tempValue);
-
-  oledDisplay.setCursor(0, 46);
-#if defined(SENSOR_BATTERY_ADC) || defined(SENSOR_INA226)
-  oledDisplay.printf("Bat:  %.2f V (%u mV)", tp.battery / 1000.0f, (unsigned int)tp.battery);
-#else
   oledDisplay.printf("Status: 0x%08X", (unsigned int)tp.status);
-#endif
-
-  oledDisplay.setCursor(0, 56);
-  oledDisplay.printf("Samples:[%d,%d,%d]", (int)tp.sensorReadings[0], (int)tp.sensorReadings[1],
-                    (int)tp.sensorReadings[2]);
-
-#elif defined(SENSOR_SOIL_3TIP)
-  float moist = tp.sensorReadings[0] / 10.0f;
-  float tempValue = tp.sensorReadings[1] / 100.0f;
-  int16_t ec = tp.sensorReadings[2];
-
-  oledDisplay.setCursor(0, 23);
-  oledDisplay.printf("Moist: %.1f %%", moist);
-
-  oledDisplay.setCursor(0, 33);
-  oledDisplay.printf("Temp:  %.2f C", tempValue);
-
-  oledDisplay.setCursor(0, 43);
-  oledDisplay.printf("EC:    %d us/cm", (int)ec);
-
-  oledDisplay.setCursor(0, 53);
-#if defined(SENSOR_BATTERY_ADC) || defined(SENSOR_INA226)
-  oledDisplay.printf("Bat: %.2f V", tp.battery / 1000.0f);
-#else
-  oledDisplay.printf("Status: 0x%08X", (unsigned int)tp.status);
-#endif
-
-#elif defined(SENSOR_SOIL_5TIP)
-  float moist = tp.sensorReadings[0] / 10.0f;
-  float tempValue = tp.sensorReadings[1] / 100.0f;
-  int16_t ec = tp.sensorReadings[2];
-  float ph = tp.sensorReadings[3] / 100.0f;
-
-  oledDisplay.setCursor(0, 23);
-  oledDisplay.printf("M:%.1f%% T:%.1fC", moist, tempValue);
-
-  oledDisplay.setCursor(0, 33);
-  oledDisplay.printf("EC:%d pH:%.2f", (int)ec, ph);
-
-  oledDisplay.setCursor(0, 43);
-  oledDisplay.printf("N:%d P:%d K:%d", (int)tp.sensorReadings[4], (int)tp.sensorReadings[5],
-                    (int)tp.sensorReadings[6]);
-
-  oledDisplay.setCursor(0, 53);
-#if defined(SENSOR_BATTERY_ADC) || defined(SENSOR_INA226)
-  oledDisplay.printf("Bat: %.2f V", tp.battery / 1000.0f);
-#else
-  oledDisplay.printf("Status: 0x%08X", (unsigned int)tp.status);
-#endif
-
-#elif defined(SENSOR_WATER_TEMP) || defined(SENSOR_MLX90614)
-  float objTemp = tp.sensorReadings[0] / 10.0f;
-  float ambTemp = tp.sensorReadings[1] / 10.0f;
-
-  oledDisplay.setCursor(0, 24);
-  oledDisplay.printf("Obj Temp: %.1f C", objTemp);
-
-  oledDisplay.setCursor(0, 36);
-  oledDisplay.printf("Amb Temp: %.1f C", ambTemp);
-
-  oledDisplay.setCursor(0, 48);
-#if defined(SENSOR_BATTERY_ADC) || defined(SENSOR_INA226)
-  oledDisplay.printf("Bat: %.2f V", tp.battery / 1000.0f);
-#else
-  oledDisplay.printf("RTC Temp: %.2f C", tp.temperature / 100.0f);
-#endif
-
-#else
-  oledDisplay.setCursor(0, 24);
-  oledDisplay.printf("R0: %d  R1: %d", (int)tp.sensorReadings[0],
-                    MAX_SENSOR_READINGS > 1 ? (int)tp.sensorReadings[1] : 0);
-
-  oledDisplay.setCursor(0, 36);
-  oledDisplay.printf("Temp: %.2f C", tp.temperature / 100.0f);
-
-  oledDisplay.setCursor(0, 48);
-#if defined(SENSOR_BATTERY_ADC) || defined(SENSOR_INA226)
-  oledDisplay.printf("Bat: %.2f V", tp.battery / 1000.0f);
-#else
-  oledDisplay.printf("Status: 0x%08X", (unsigned int)tp.status);
-#endif
 #endif
 
   oledDisplay.display();

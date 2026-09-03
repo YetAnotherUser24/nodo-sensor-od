@@ -1,10 +1,9 @@
 /**
  * @file diag/main.cpp
- * @brief Interactive serial diagnostics console for n-logger hardware.
+ * @brief [DEPRECATED] Interactive serial diagnostics console from legacy n-logger platform.
  *
- * Build:  pio run -e n-logger-diag-sd   (Natek-SD v2.0)
- *         pio run -e n-logger-diag-gprs  (Natek-GPRS v0.2.0)
- * Usage:  Open serial monitor at 115200 baud. Navigate numbered menus.
+ * NOTE: This diagnostic utility was used in the legacy multi-sensor platform
+ * and is deprecated in the specialized OD-Logger project.
  */
 
 /* ============================== Includes ============================== */

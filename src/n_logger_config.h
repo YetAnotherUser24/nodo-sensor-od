@@ -18,11 +18,11 @@
  * -------------------------------------------------------------------------- */
 
 #ifndef N_LOGGER_DEVICE_NAME
-#define N_LOGGER_DEVICE_NAME "n-logger"
+#define N_LOGGER_DEVICE_NAME "od-logger"
 #endif
 
 #ifndef N_LOGGER_BLE_NAME
-#define N_LOGGER_BLE_NAME "n-logger-BLE"
+#define N_LOGGER_BLE_NAME "od-logger-BLE"
 #endif
 
 #ifndef CODE_VERSION
@@ -73,206 +73,19 @@
 #define FLAG_SENT 0x01
 
 /* --------------------------------------------------------------------------
- *  Sensor Configuration — Descriptive Sensor Flags
+ *  Sensor Configuration: Aqualabo DIGISENS Optical Dissolved Oxygen (OD)
  *
- *  Enable sensors by defining one or more of these flags at build time:
- *    -DSENSOR_MAXBOTIX_UART     = MaxBotix MB12xx ultrasonic distance (UART)
- *    -DSENSOR_WATER_TEMP        = Water surface temperature (I2C)
- *    -DSENSOR_RADAR             = Radar distance sensor (Modbus RTU, direct UART)
- *    -DSENSOR_SOIL_3TIP         = 3-probe soil moisture/temperature (Modbus RTU, RS-485)
- *    -DSENSOR_SOIL_5TIP         = 5-probe soil comprehensive sensor (Modbus RTU, RS-485)
- *    -DSENSOR_OD                = Optical dissolved oxygen DIGISENS sensor (Modbus RTU, RS-485)
- *    -DSENSOR_BATTERY_ADC       = Battery voltage via ADC pin
- *
- *  NOTE: SENSOR_RADAR, SENSOR_SOIL_3TIP, SENSOR_SOIL_5TIP, and SENSOR_OD share
- *  UART pins (GPIO 34/32 or 16/17) and power pin (GPIO 19 or 12).
- *  They are mutually exclusive — do NOT enable more than one in the same build.
- *
- *  Each sensor defines its own pins, number of readings, and warmup time.
- *  Multiple compatible sensors can be active simultaneously.
- *  MAX_SENSOR_READINGS is auto-computed from all enabled sensors.
- *
- *  To override a pin at build time, define it before this header is included
- *  (e.g. -DMAXBOTIX_RX_PIN=22 in platformio.ini build_flags).
+ *  Communicates via Modbus RTU over RS-485 at 9600 baud (8N1).
+ *  Readings:
+ *    [0] = Water Temperature (centi-°C)
+ *    [1] = Dissolved Oxygen (milli-mg/L)
+ *    [2] = DO Saturation (deci-%Sat)
+ *    [3] = Parameter 3 (centi)
+ *    [4] = Parameter 4 (centi)
+ *    [5] = Battery Voltage (mV)
  * -------------------------------------------------------------------------- */
 
-// Radar, 3-probe soil, 5-probe soil, and OD sensors share UART pins and power pin.
-// At most one of these may be enabled in a single build.
-#if (defined(SENSOR_RADAR) + defined(SENSOR_SOIL_3TIP) + defined(SENSOR_SOIL_5TIP) +               \
-     defined(SENSOR_OD)) > 1
-#error                                                                                             \
-    "SENSOR_RADAR, SENSOR_SOIL_3TIP, SENSOR_SOIL_5TIP, and SENSOR_OD share hardware pins and are mutually exclusive."
-#endif
-
-// --- MaxBotix MB12xx ultrasonic sensor over UART ---
-#ifdef SENSOR_MAXBOTIX_UART
-#ifndef MAXBOTIX_RX_PIN
-#define MAXBOTIX_RX_PIN 34
-#endif
-#ifndef MAXBOTIX_TX_PIN
-#define MAXBOTIX_TX_PIN 32
-#endif
-#ifndef MAXBOTIX_PWR_PIN
-#define MAXBOTIX_PWR_PIN 18
-#endif
-#ifndef MAXBOTIX_NUM_READINGS
-#define MAXBOTIX_NUM_READINGS 5
-#endif
-#ifndef MAXBOTIX_WARMUP_MS
-#define MAXBOTIX_WARMUP_MS 2500
-#endif
-#ifndef MAXBOTIX_SAMPLE_TIMEOUT_MS
-#define MAXBOTIX_SAMPLE_TIMEOUT_MS 1000
-#endif
-#undef SENSOR_NAME
-#define SENSOR_NAME "maxbotix-uart"
-#else
-#define MAXBOTIX_NUM_READINGS 0
-#endif
-
-// --- Water / IR Surface Temperature sensor (MLX90614ESF-DCI over I2C) ---
-#if defined(SENSOR_WATER_TEMP) || defined(SENSOR_MLX90614)
-#ifndef WATER_TEMP_ADDR
-#define WATER_TEMP_ADDR 0x5A
-#endif
-#ifndef WATER_TEMP_PWR_PIN
-#define WATER_TEMP_PWR_PIN 27
-#endif
-#ifndef WATER_TEMP_PWR_ACTIVE_HIGH
-#define WATER_TEMP_PWR_ACTIVE_HIGH true
-#endif
-#ifndef WATER_TEMP_NUM_READINGS
-#define WATER_TEMP_NUM_READINGS 2 // 0: Object Temp, 1: Ambient Temp
-#endif
-#ifndef WATER_TEMP_WARMUP_MS
-#define WATER_TEMP_WARMUP_MS 100
-#endif
-#undef SENSOR_NAME
-#define SENSOR_NAME "mlx90614"
-#else
-#define WATER_TEMP_NUM_READINGS 0
-#endif
-
-// --- Radar distance sensor (Modbus RTU over direct UART) ---
-#ifdef SENSOR_RADAR
-#ifndef RADAR_RX_PIN
-#define RADAR_RX_PIN 34
-#endif
-#ifndef RADAR_TX_PIN
-#define RADAR_TX_PIN 32
-#endif
-#ifndef RADAR_PWR_PIN
-#define RADAR_PWR_PIN 19
-#endif
-#ifndef RADAR_BAUD
-#define RADAR_BAUD 115200
-#endif
-#ifndef RADAR_SLAVE_ID
-#define RADAR_SLAVE_ID 1
-#endif
-#ifndef RADAR_NUM_READINGS
-#define RADAR_NUM_READINGS 5
-#endif
-#ifndef RADAR_MODBUS_REGISTER
-#define RADAR_MODBUS_REGISTER 0x0001
-#endif
-#ifndef RADAR_WARMUP_MS
-#define RADAR_WARMUP_MS 2500
-#endif
-#ifndef RADAR_SAMPLE_TIMEOUT_MS
-#define RADAR_SAMPLE_TIMEOUT_MS 8000
-#endif
-#undef SENSOR_NAME
-#define SENSOR_NAME "radar"
-#else
-#define RADAR_NUM_READINGS 0
-#endif
-
-// --- 3-Probe Soil Moisture/Temperature sensor (Modbus RTU over RS-485) ---
-#ifdef SENSOR_SOIL_3TIP
-#ifndef SOIL3_RX_PIN
-#define SOIL3_RX_PIN 34
-#endif
-#ifndef SOIL3_TX_PIN
-#define SOIL3_TX_PIN 32
-#endif
-#ifndef SOIL3_PWR_PIN
-#define SOIL3_PWR_PIN 19
-#endif
-#ifndef SOIL3_BAUD
-#define SOIL3_BAUD 9600
-#endif
-#ifndef SOIL3_SLAVE_ID
-#define SOIL3_SLAVE_ID 1
-#endif
-#ifndef SOIL3_SAMPLE_COUNT
-#define SOIL3_SAMPLE_COUNT 2
-#endif
-#ifndef SOIL3_NUM_READINGS
-// Each sample reads 2 registers (moisture + temperature), so total
-// readings = sample_count * 2.
-#define SOIL3_NUM_READINGS (SOIL3_SAMPLE_COUNT * SOIL3_MODBUS_READ_COUNT)
-#endif
-#ifndef SOIL3_MODBUS_READ_COUNT
-#define SOIL3_MODBUS_READ_COUNT 2
-#endif
-#ifndef SOIL3_MODBUS_START_ADDR
-#define SOIL3_MODBUS_START_ADDR 0x0000
-#endif
-#ifndef SOIL3_WARMUP_MS
-#define SOIL3_WARMUP_MS 500
-#endif
-#undef SENSOR_NAME
-#define SENSOR_NAME "soil-3probe"
-#else
-#define SOIL3_NUM_READINGS 0
-#endif
-
-// --- 5-Probe Soil Comprehensive sensor (Modbus RTU over RS-485) ---
-// Measures moisture, temperature, conductivity (EC), pH, N, P, K.
-// Reads 7 holding registers starting at 0x0000.
-#ifdef SENSOR_SOIL_5TIP
-#ifndef SOIL5_RX_PIN
-#define SOIL5_RX_PIN 34
-#endif
-#ifndef SOIL5_TX_PIN
-#define SOIL5_TX_PIN 32
-#endif
-#ifndef SOIL5_PWR_PIN
-#define SOIL5_PWR_PIN 19
-#endif
-#ifndef SOIL5_DE_RE_PIN
-#define SOIL5_DE_RE_PIN 0
-#endif
-#ifndef SOIL5_BAUD
-#define SOIL5_BAUD 4800
-#endif
-#ifndef SOIL5_SLAVE_ID
-#define SOIL5_SLAVE_ID 1
-#endif
-#ifndef SOIL5_SAMPLE_COUNT
-#define SOIL5_SAMPLE_COUNT 2
-#endif
-#ifndef SOIL5_MODBUS_READ_COUNT
-#define SOIL5_MODBUS_READ_COUNT 7
-#endif
-#ifndef SOIL5_MODBUS_START_ADDR
-#define SOIL5_MODBUS_START_ADDR 0x0000
-#endif
-#ifndef SOIL5_WARMUP_MS
-#define SOIL5_WARMUP_MS 200
-#endif
-#ifndef SOIL5_NUM_READINGS
-#define SOIL5_NUM_READINGS (SOIL5_SAMPLE_COUNT * SOIL5_MODBUS_READ_COUNT)
-#endif
-#undef SENSOR_NAME
-#define SENSOR_NAME "soil-5probe"
-#else
-#define SOIL5_NUM_READINGS 0
-#endif
-
 // --- Optical Dissolved Oxygen (OD) sensor (Modbus RTU over RS-485) ---
-#ifdef SENSOR_OD
 #ifndef OD_RX_PIN
 #define OD_RX_PIN 34
 #endif
@@ -316,110 +129,48 @@
 #define OD_WARMUP_MS 1500
 #endif
 #ifndef OD_NUM_READINGS
-// 5 floats decoded from 10 registers = 5 int16 readings:
-// [0]=Temp (centi °C), [1]=DO (centi mg/L), [2]=DO Sat (deci %Sat), [3]=P3, [4]=P4
+// 5 decoded float readings from 10 holding registers:
+// [0]=Temp (centi °C), [1]=DO (milli-mg/L), [2]=DO Sat (deci %Sat), [3]=P3, [4]=P4
 #define OD_NUM_READINGS 5
 #endif
-#undef SENSOR_NAME
+
+#ifndef SENSOR_NAME
 #define SENSOR_NAME "od-digisens"
-#else
-#define OD_NUM_READINGS 0
 #endif
 
-// --- Battery voltage via ADC ---
+/* --------------------------------------------------------------------------
+ *  Battery Monitoring Configuration
+ *  - SENSOR_BATTERY_ADC: ADC divider on GPIO 35 (Natek-GPRS v0.2.0 board)
+ *  - SENSOR_INA226: I2C voltage/current monitor at 0x45 (Natek-SD v2.0 board)
+ * -------------------------------------------------------------------------- */
+
+#if defined(SENSOR_INA226) && defined(SENSOR_BATTERY_ADC)
+#error "SENSOR_INA226 and SENSOR_BATTERY_ADC are mutually exclusive (both monitor battery voltage)."
+#endif
+
 #ifdef SENSOR_BATTERY_ADC
 #ifndef BATTERY_ADC_PIN
 #define BATTERY_ADC_PIN 35
 #endif
-#ifndef BATTERY_NUM_READINGS
-#define BATTERY_NUM_READINGS 1
-#endif
 #ifndef BATTERY_ADC_MULTIPLIER
 #define BATTERY_ADC_MULTIPLIER 2
 #endif
-#undef SENSOR_NAME
-#define SENSOR_NAME "battery-adc"
-// Note: SENSOR_BATTERY_ADC is a secondary sensor and does NOT set SENSOR_NAME.
-// If another primary sensor (e.g. SENSOR_SOIL_3TIP, SENSOR_RADAR, etc.) is enabled,
-// its SENSOR_NAME definition takes precedence due to include order.
-#ifdef SENSOR_SOIL_3TIP
-#undef SENSOR_NAME
-#define SENSOR_NAME "soil-3probe"
-#elif defined(SENSOR_RADAR)
-#undef SENSOR_NAME
-#define SENSOR_NAME "radar"
-#elif defined(SENSOR_MAXBOTIX_UART)
-#undef SENSOR_NAME
-#define SENSOR_NAME "maxbotix-uart"
-#elif defined(SENSOR_WATER_TEMP)
-#undef SENSOR_NAME
-#define SENSOR_NAME "water-temp"
-#elif defined(SENSOR_SOIL_5TIP)
-#undef SENSOR_NAME
-#define SENSOR_NAME "soil-5probe"
-#elif defined(SENSOR_OD)
-#undef SENSOR_NAME
-#define SENSOR_NAME "od-digisens"
-#else
-#define SENSOR_NAME "battery-adc"
-#endif
-#else
-#define BATTERY_NUM_READINGS 0
-#endif
-
-// --- INA226 voltage/current monitor (I2C) ---
-// Mutually exclusive with SENSOR_BATTERY_ADC — both populate the `battery` field.
-#if defined(SENSOR_INA226) && defined(SENSOR_BATTERY_ADC)
-#error "SENSOR_INA226 and SENSOR_BATTERY_ADC are mutually exclusive (both use the battery field)."
-#endif
-
-#ifdef SENSOR_INA226
+#define BATTERY_NUM_READINGS 1
+#elif defined(SENSOR_INA226)
 #ifndef INA226_ADDR
 #define INA226_ADDR 0x45
-#endif
-#ifndef INA226_NUM_READINGS
-#define INA226_NUM_READINGS 1
 #endif
 #ifndef INA226_WARMUP_MS
 #define INA226_WARMUP_MS 200
 #endif
-#undef SENSOR_NAME
-#define SENSOR_NAME "ina226"
-#ifdef SENSOR_SOIL_3TIP
-#undef SENSOR_NAME
-#define SENSOR_NAME "soil-3probe"
-#elif defined(SENSOR_RADAR)
-#undef SENSOR_NAME
-#define SENSOR_NAME "radar"
-#elif defined(SENSOR_MAXBOTIX_UART)
-#undef SENSOR_NAME
-#define SENSOR_NAME "maxbotix-uart"
-#elif defined(SENSOR_WATER_TEMP) || defined(SENSOR_MLX90614)
-#undef SENSOR_NAME
-#define SENSOR_NAME "mlx90614"
-#elif defined(SENSOR_SOIL_5TIP)
-#undef SENSOR_NAME
-#define SENSOR_NAME "soil-5probe"
-#elif defined(SENSOR_OD)
-#undef SENSOR_NAME
-#define SENSOR_NAME "od-digisens"
+#define BATTERY_NUM_READINGS 1
 #else
-#define SENSOR_NAME "ina226"
-#endif
-#else
-#define INA226_NUM_READINGS 0
+#define BATTERY_NUM_READINGS 0
 #endif
 
-// --- Compute total measurement slots ---
+// --- Total measurement slots: 5 OD readings + 1 battery reading = 6 ---
 #ifndef MAX_SENSOR_READINGS
-#define MAX_SENSOR_READINGS                                                                        \
-  (MAXBOTIX_NUM_READINGS + WATER_TEMP_NUM_READINGS + RADAR_NUM_READINGS + BATTERY_NUM_READINGS +   \
-   INA226_NUM_READINGS + SOIL3_NUM_READINGS + SOIL5_NUM_READINGS + OD_NUM_READINGS)
-#endif
-
-// --- Fallback banner name when no sensor is defined ---
-#ifndef SENSOR_NAME
-#define SENSOR_NAME "none"
+#define MAX_SENSOR_READINGS (OD_NUM_READINGS + BATTERY_NUM_READINGS)
 #endif
 
 /* --------------------------------------------------------------------------
@@ -440,16 +191,12 @@ struct ModuleConfig {
 /* --------------------------------------------------------------------------
  *  Telemetry Payload Structure
  *
- *  Fields adapt to enabled sensors:
- *  - temperature: always from RTC
- *  - battery: populated by SENSOR_BATTERY_ADC if enabled
- *  - sensorReadings[]: sized to sum of all enabled sensor readings
+ *  Field layout matches EEPROM page format and CSV column order.
+ *  Total size: 2 + 2 + (6 * 2) + 4 + 4 = 24 bytes (fits within 32-byte EEPROM page).
  * -------------------------------------------------------------------------- */
 
 /**
  * @brief Main telemetry payload structure sent to the server.
- *
- * Field layout matches EEPROM page format and CSV column order.
  */
 struct TelemetryPayload {
   int16_t freeStorage;
@@ -469,12 +216,9 @@ struct TelemetryPayload {
 #define STATUS_FULL_MEMORY_BIT 1
 #define STATUS_CORRUPTED_MEMORY_BIT 2
 #define STATUS_CODE_ERROR_BIT 3
-#define STATUS_WATER_LEVEL_SENSOR_BIT 16
 #define STATUS_SD_CARD_BIT 17
 #define STATUS_TEMPERATURE_BIT 18
 #define STATUS_GRPS_BIT 19
-#define STATUS_RADAR_SENSOR_BIT 20
-#define STATUS_SOIL3_SENSOR_BIT 21
 #define STATUS_OD_SENSOR_BIT 22
 
 /* --------------------------------------------------------------------------

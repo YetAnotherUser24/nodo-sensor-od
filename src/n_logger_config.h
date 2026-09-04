@@ -164,9 +164,12 @@
 #define INA226_WARMUP_MS 200
 #endif
 #define BATTERY_NUM_READINGS 1
+#elif defined(SENSOR_VIRTUAL)
+#define BATTERY_NUM_READINGS 1
 #else
 #define BATTERY_NUM_READINGS 0
 #endif
+
 
 // --- Total measurement slots: 5 OD readings + 1 battery reading = 6 ---
 #ifndef MAX_SENSOR_READINGS
@@ -202,11 +205,12 @@ struct TelemetryPayload {
   int16_t freeStorage;
   int16_t temperature;
   int16_t sensorReadings[MAX_SENSOR_READINGS];
-#if defined(SENSOR_BATTERY_ADC) || defined(SENSOR_INA226)
+#if defined(SENSOR_BATTERY_ADC) || defined(SENSOR_INA226) || defined(SENSOR_VIRTUAL)
   uint32_t battery;
 #endif
   uint32_t status;
 };
+
 
 /* --------------------------------------------------------------------------
  *  Status Bit Definitions

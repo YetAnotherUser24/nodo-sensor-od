@@ -248,6 +248,64 @@ void ina226PowerDown() {
  *  Main Sensor Sampling Function: sensorReadAll()
  * ================================================================== */
 
+#if defined(SENSOR_VIRTUAL)
+
+void sensorReadAll(TelemetryPayload& tp) {
+  static float simAngle = 0.0f;
+  simAngle += 0.25f;
+
+  // Realistic simulated aquaculture values:
+  // DO: ~7.8 mg/L with slight organic fluctuation (7.0 - 8.6 mg/L)
+  // Water Temp: ~24.5 °C (23.8 - 25.2 °C)
+  // Oxygen Saturation: ~95% (89 - 101%)
+  float simDoMgL = 7.8f + 0.8f * sinf(simAngle);
+  float simTempC = 24.5f + 0.7f * cosf(simAngle);
+  float simSatPct = 95.0f + 6.0f * sinf(simAngle);
+
+  tp.sensorReadings[0] = (int16_t)roundf(simTempC * 100.0f);   // centi-°C
+  tp.sensorReadings[1] = (int16_t)roundf(simDoMgL * 1000.0f);  // milli-mg/L
+  tp.sensorReadings[2] = (int16_t)roundf(simSatPct * 10.0f);   // deci-%
+  tp.sensorReadings[3] = 0;
+  tp.sensorReadings[4] = 0;
+
+  // Battery voltage: healthy 4120 mV default, or real hardware reading if > 3000 mV
+#ifdef SENSOR_BATTERY_ADC
+  uint32_t realMv = batteryAdcRead();
+  tp.battery = (realMv > 3000) ? realMv : 4120;
+#elif defined(SENSOR_INA226)
+  uint32_t realMv = ina226ReadBusVoltage();
+  tp.battery = (realMv > 3000) ? realMv : 4120;
+#else
+  tp.battery = 4120;
+#endif
+  tp.sensorReadings[5] = (int16_t)(tp.battery & 0xFFFF);
+
+  for (uint8_t i = 6; i < MAX_SENSOR_READINGS; i++) {
+    tp.sensorReadings[i] = 0;
+  }
+
+  tp.status = 0x00000000; // nominal, no sensor comm failure
+
+  Logf("[VIRTUAL] DO: %d.%03d mg/L | Temp: %d.%02d C | Sat: %d.%d %% | Bat: %u mV\n",
+       tp.sensorReadings[1] / 1000, abs(tp.sensorReadings[1] % 1000),
+       tp.sensorReadings[0] / 100, abs(tp.sensorReadings[0] % 100),
+       tp.sensorReadings[2] / 10, abs(tp.sensorReadings[2] % 10),
+       (unsigned int)tp.battery);
+}
+
+int16_t readPrimarySensorRealtime() {
+  static float simAngle = 0.0f;
+  simAngle += 0.25f;
+  float simDoMgL = 7.8f + 0.8f * sinf(simAngle);
+  return (int16_t)roundf(simDoMgL * 1000.0f);
+}
+
+void stopPrimarySensorRealtime() {
+  // No hardware pins to de-energize in virtual mode
+}
+
+#else // !SENSOR_VIRTUAL
+
 void sensorReadAll(TelemetryPayload& tp) {
   uint8_t readingIndex = 0;
 
@@ -360,3 +418,6 @@ void stopPrimarySensorRealtime() {
 
   realtimeSensorInit = false;
 }
+
+#endif // !SENSOR_VIRTUAL
+

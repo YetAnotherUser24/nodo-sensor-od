@@ -1,28 +1,21 @@
 #pragma once
 
-/* ----------------------------- SIM / APN ----------------------------- */
+/* ----------------------------- WiFi ----------------------------- */
 
-#define APN "claro.pe"
-#define APN_USER ""
-#define APN_PASS ""
-#define GSM_PIN ""
+#define WIFI_SSID     "WifiDev"
+#define WIFI_PASSWORD "rpidev24"
+#define WIFI_CONNECT_TIMEOUT_MS 15000
 
-/* ------------------------- ThingsBoard / MQTT ------------------------- */
+/* ----------------------- AquaControl Dashboard ----------------------- */
 
-#define MQTT_HOST "viewer.natek.lat"
-#define MQTT_PORT 1883
-#define MQTT_TOKEN "DEVICE-MQTT-TOKEN"
-#define MQTT_TOPIC "DEVICE-MQTT-TOPIC"
-#define TB_RPC_SUB_TOPIC "v1/devices/me/rpc/request/+"
+#define AQUACONTROL_HOST       "tesisutec.vercel.app"
+#define AQUACONTROL_PATH       "/api/telemetry/sensor"
+#define AQUACONTROL_DEVICE_KEY "ESP32_SENSOR_KEY_2026"
 
 /* ------------------------------ BLE ---------------------------------- */
 
-#define SERVICE_UUID "4fafc201-1fb5-459e-8fcc-c5c9c331914b"
-#define CHARACTERISTIC_UUID "beb5483e-36e1-4688-b7f5-ea07361b26a8"
+#define SERVICE_UUID               "4fafc201-1fb5-459e-8fcc-c5c9c331914b"
+#define CHARACTERISTIC_UUID        "beb5483e-36e1-4688-b7f5-ea07361b26a8"
 #define CHARACTERISTIC_NOTIFY_UUID "beb5483e-36e1-4688-b7f5-ea07361b26a9"
 
 #define BLE_ACTIVE_TIME 30000
-
-/* ------------------------------ Location ------------------------------ */
-
-#define LOCAL_TZ_OFFSET_SEC (5 * 3600)

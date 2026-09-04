@@ -7,7 +7,7 @@
  *  - Preparing compact EEPROM records.
  *  - Dumping EEPROM pages to SD as CSV.
  *  - Processing pending CSV files and converting to JSON.
- *  - Uploading telemetry to ThingsBoard (batch and non-batch).
+ *  - Uploading telemetry to AquaControl via WiFi HTTPS (batch and non-batch).
  */
 
 #pragma once
@@ -60,14 +60,16 @@ void normalizeConfig();
 void takeMeasurement();
 
 /**
- * @brief Sends all pending CSV files from SD to ThingsBoard.
+ * @brief Sends all pending CSV files from SD to AquaControl.
  */
-void sendSDPendingToThingsboard();
+void sendSDPending();
 
 /**
- * @brief Sends all unsent EEPROM pages to ThingsBoard.
+ * @brief Sends all unsent EEPROM pages to AquaControl.
+ * @return Number of pages successfully sent.
  */
-void sendEEPROMToThingsboard();
+uint16_t sendEEPROMPending();
+
 
 /**
  * @brief Dumps all marked EEPROM pages to SD in CSV format.
@@ -94,14 +96,17 @@ uint8_t writeEEPROMLine(uint16_t n);
 bool markEepromSentByTimestamp(uint32_t secondsSince2000);
 
 /**
- * @brief Converts one CSV line to ThingsBoard JSON payload.
+ * @brief Parses one CSV line and extracts fields for upload.
  *
  * @param line Input CSV.
- * @param jsonOut Generated JSON string.
  * @param outSeconds2000 Extracted timestamp.
+ * @param outReadings    Extracted sensor readings array.
+ * @param outTemp        Extracted RTC temperature.
+ * @param outStatus      Extracted status bitmask.
  * @return true if line was pending (sent=0), false otherwise.
  */
-bool csvLineToJson(const String& line, String& jsonOut, uint32_t& outSeconds2000);
+bool csvLineParse(const String& line, uint32_t& outSeconds2000,
+                  int16_t* outReadings, int16_t& outTemp, uint32_t& outStatus);
 
 /**
  * @brief Processes CSV file: sends unsent lines and rewrites the file.

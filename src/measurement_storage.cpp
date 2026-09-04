@@ -22,8 +22,9 @@
 #include "eeprom_i2c.h"
 #include "error_sensor.h"
 #include "measurement_storage.h"
-#include "modem_mqtt.h"
 #include "n_logger_config.h"
+#include "wifi_http.h"
+#include "esp_now_sender.h"
 #include "rtc_utils.h"
 #include "sensor_engine.h"
 
@@ -36,10 +37,6 @@
 
 #ifdef SD_MODULE
 #include <SdFat.h>
-#endif
-
-#ifdef GPRS_MODULE
-#include <PubSubClient.h>
 #endif
 
 /* --------------------------------------------------------------------------
@@ -69,11 +66,7 @@ extern RtcDS3231<TwoWire> rtc;
 extern RtcDateTime rtcNow;
 extern char dateStr[20];
 
-#ifdef GPRS_MODULE
-extern PubSubClient mqtt;
-#endif
-
-extern bool mqttAvailable;
+extern bool wifiAvailable;
 
 /* --------------------------------------------------------------------------
  *  SD / EEPROM Helpers (unchanged logic, documented)
@@ -277,7 +270,7 @@ void takeMeasurement() {
   telemetryPayload.temperature = 0;
   for (int i = 0; i < MAX_SENSOR_READINGS; i++)
     telemetryPayload.sensorReadings[i] = 0;
-#if defined(SENSOR_BATTERY_ADC) || defined(SENSOR_INA226)
+#if defined(SENSOR_BATTERY_ADC) || defined(SENSOR_INA226) || defined(SENSOR_VIRTUAL)
   telemetryPayload.battery = 0;
 #endif
   telemetryPayload.status = 0x00000000;
@@ -302,6 +295,22 @@ void takeMeasurement() {
 
   /* Sensor sampling via sensor engine (handles all enabled sensors) */
   sensorReadAll(telemetryPayload);
+
+#if !defined(DISABLE_ESPNOW)
+  /* Broadcast real-time DO packet via ESP-NOW to ODrive Motor Controller */
+  static uint32_t espNowSeqCounter = 0;
+  OdTelemetryPacket espNowPkt;
+  espNowPkt.magic = AQUACONTROL_PACKET_MAGIC;
+  espNowPkt.sequence = ++espNowSeqCounter;
+  espNowPkt.timestamp_sec = secondsSince2000;
+  espNowPkt.dissolved_oxygen = telemetryPayload.sensorReadings[1] / 1000.0f; // milli-mg/L to mg/L
+  espNowPkt.water_temperature = telemetryPayload.sensorReadings[0] / 100.0f;  // centi-C to C
+  espNowPkt.oxygen_saturation = telemetryPayload.sensorReadings[2] / 10.0f;   // deci-% to %
+  espNowPkt.battery_voltage = telemetryPayload.battery / 1000.0f;             // mV to V
+  espNowPkt.status_flags = telemetryPayload.status;
+  espNowBroadcastDO(espNowPkt);
+#endif
+
 
   /* Low-battery emergency config update (battery populated by sensor engine) */
 #if defined(SENSOR_BATTERY_ADC) || defined(SENSOR_INA226)
@@ -394,25 +403,16 @@ void takeMeasurement() {
 }
 
 /* --------------------------------------------------------------------------
- *  Upload routines: SD pending + EEPROM pending
+ *  Upload routines: SD pending + EEPROM pending (via WiFi HTTPS)
  * -------------------------------------------------------------------------- */
 
-void sendSDPendingToThingsboard() {
-#ifdef GPRS_MODULE
-  if (!mqttAvailable) {
-    Logln("MQTT unavailable, skipping SD uploads.");
+void sendSDPending() {
+#if defined(WIFI_MODULE) && defined(SD_MODULE)
+  if (!wifiAvailable) {
+    Logln("WiFi unavailable, skipping SD uploads.");
     return;
   }
 
-  if (!mqtt.connected()) {
-    if (!connectMQTT()) {
-      Logln("MQTT connection lost, skipping SD uploads.");
-      mqttAvailable = false;
-      return;
-    }
-  }
-
-#ifdef SD_MODULE
   SdFile dir, entry;
   if (!SD.begin(SdSpiConfig(SD_PIN_CS, SHARED_SPI, SD_SCK_MHZ(20), &sdSPI)))
     return;
@@ -440,25 +440,19 @@ void sendSDPendingToThingsboard() {
   }
 
   dir.close();
-#endif // SD_MODULE
-
-  // Final flush for batch (power optimized)
-  for (int i = 0; i < 5; i++) {
-    mqtt.loop();
-    delay(50);
-  }
 #else
   (void)0;
 #endif
 }
 
-void sendEEPROMToThingsboard() {
-#ifdef GPRS_MODULE
-  if (!mqttAvailable) {
-    Logln("MQTT unavailable, skipping EEPROM uploads.");
-    return;
+uint16_t sendEEPROMPending() {
+#ifdef WIFI_MODULE
+  if (!wifiAvailable) {
+    Logln("WiFi unavailable, skipping EEPROM uploads.");
+    return 0;
   }
 
+  uint16_t sentCount = 0;
   uint16_t pageIndex = 0;
   byte pageBuf[EEPROM_PAGE_SIZE];
 
@@ -473,74 +467,26 @@ void sendEEPROMToThingsboard() {
       int16_t temp = *((int16_t*)&pageBuf[4 + MAX_SENSOR_READINGS * 2]);
       uint32_t status = *((uint32_t*)&pageBuf[4 + MAX_SENSOR_READINGS * 2 + 2]);
 
-      uint64_t tsUnix = ((uint64_t)seconds2000 + UNIX_OFFSET_2000 + LOCAL_TZ_OFFSET_SEC) * 1000ULL;
-
-      StaticJsonDocument<512> doc;
-      doc["ts"] = tsUnix;
-
-      JsonObject vals = doc.createNestedObject("values");
-
-#if defined(SENSOR_BATTERY_ADC) || defined(SENSOR_INA226)
-      // Battery is the last sensor reading if enabled (cast to uint16_t for up to 65535 mV)
-      vals["battery"] = (uint16_t)readings[MAX_SENSOR_READINGS - 1];
-#endif
-      vals["temperature"] = temp;
-      vals["status"] = status;
-
-      JsonArray arr = vals.createNestedArray("sensorReadings");
-      for (int i = 0; i < MAX_SENSOR_READINGS; i++)
-        arr.add(readings[i]);
-
-      vals["eepromFreePages"] = getEEPROMFreePages();
-      vals["sdFreeMB"] = getSDFreeMB();
-
-      String jsonOut;
-      serializeJson(doc, jsonOut);
+      bool ok = publishToAquaControl(seconds2000, readings, temp, status);
 
 #ifdef DEBUG
-      Logln("MQTT -> EEPROM Data:");
-      Log("   Payload: ");
-      Logln(jsonOut.c_str());
+      Logf("   EEPROM page %u: %s\n", pageIndex, ok ? "sent" : "failed");
 #endif
 
-      if (!mqtt.connected()) {
-        if (!connectMQTT()) {
-          Logln("MQTT connection lost, stopping EEPROM uploads.");
-          mqttAvailable = false;
-          return;
-        }
-      }
-
-      bool ok = mqtt.publish(MQTT_TOPIC, jsonOut.c_str());
-
-      for (int i = 0; i < 3; i++) {
-        mqtt.loop();
-        delay(50);
-      }
-
-#ifdef DEBUG
       if (ok) {
-        Logln("   Published successfully (queued)");
-      } else {
-        Logln("   Publish failed");
-      }
-#endif
-
-      if (ok)
         i2c_eeprom_write_byte(EEPROM_ADDRESS, addr + EEPROM_SENT_FLAG_OFFSET, FLAG_SENT);
+        sentCount++;
+      }
     }
 
     pageIndex++;
   }
-
-  for (int i = 0; i < 5; i++) {
-    mqtt.loop();
-    delay(50);
-  }
+  return sentCount;
 #else
-  (void)0;
+  return 0;
 #endif
 }
+
 
 /* --------------------------------------------------------------------------
  *  dumpEEPROM(): writes all marked pages to SD
@@ -805,13 +751,14 @@ bool markEepromSentByTimestamp(uint32_t secondsSince2000) {
 }
 
 /* --------------------------------------------------------------------------
- *  csvLineToJson() — CSV → JSON conversion
+ *  csvLineParse() — CSV field extraction
  *
  *  CSV format: dateStr, seconds2000, reading[0..N-1], temperature, status, sent
- *  → JSON with sensorReadings array, battery (if SENSOR_BATTERY_ADC), temperature, status
+ *  Extracts raw fields for publishToAquaControl().
  * -------------------------------------------------------------------------- */
 
-bool csvLineToJson(const String& line, String& jsonOut, uint32_t& outSeconds2000) {
+bool csvLineParse(const String& line, uint32_t& outSeconds2000,
+                  int16_t* outReadings, int16_t& outTemp, uint32_t& outStatus) {
   if (line.length() < 10)
     return false;
 
@@ -850,28 +797,12 @@ bool csvLineToJson(const String& line, String& jsonOut, uint32_t& outSeconds2000
   if (field < (5 + MAX_SENSOR_READINGS))
     return false;
 
-  StaticJsonDocument<512> doc;
-  uint64_t tsUnix = ((uint64_t)seconds2000 + UNIX_OFFSET_2000 + LOCAL_TZ_OFFSET_SEC) * 1000ULL;
-
-  doc["ts"] = tsUnix;
-
-  JsonObject vals = doc.createNestedObject("values");
-
-#if defined(SENSOR_BATTERY_ADC) || defined(SENSOR_INA226)
-  // Battery is the last sensor reading if enabled (cast to uint16_t for up to 65535 mV)
-  vals["battery"] = (uint16_t)values[MAX_SENSOR_READINGS - 1];
-#endif
-  vals["temperature"] = values[MAX_SENSOR_READINGS];
-  vals["status"] = status;
-
-  JsonArray arr = vals.createNestedArray("sensorReadings");
-  for (int i = 0; i < MAX_SENSOR_READINGS; i++)
-    arr.add(values[i]);
-
-  jsonOut.clear();
-  serializeJson(doc, jsonOut);
-
   outSeconds2000 = seconds2000;
+  for (int i = 0; i < MAX_SENSOR_READINGS; i++)
+    outReadings[i] = (int16_t)values[i];
+  outTemp = (int16_t)values[MAX_SENSOR_READINGS];
+  outStatus = status;
+
   return (sent == 0);
 }
 
@@ -903,14 +834,16 @@ bool processCsvFile(const char* filename) {
     if (c == '\r')
       continue;
     if (c == '\n') {
-      String json;
       uint32_t sec2000 = 0;
+      int16_t csvReadings[MAX_SENSOR_READINGS];
+      int16_t csvTemp = 0;
+      uint32_t csvStatus = 0;
 
       String newLine = line;
-      bool wasPending = csvLineToJson(line, json, sec2000);
+      bool wasPending = csvLineParse(line, sec2000, csvReadings, csvTemp, csvStatus);
 
       if (wasPending) {
-        if (publishJsonLineToTB(json)) {
+        if (publishToAquaControl(sec2000, csvReadings, csvTemp, csvStatus)) {
           newLine = markLineSent(line);
           markEepromSentByTimestamp(sec2000);
         } else {
@@ -927,14 +860,16 @@ bool processCsvFile(const char* filename) {
   }
 
   if (line.length() > 0) {
-    String json;
     uint32_t sec2000 = 0;
+    int16_t csvReadings[MAX_SENSOR_READINGS];
+    int16_t csvTemp = 0;
+    uint32_t csvStatus = 0;
     String newLine = line;
 
-    bool wasPending = csvLineToJson(line, json, sec2000);
+    bool wasPending = csvLineParse(line, sec2000, csvReadings, csvTemp, csvStatus);
 
     if (wasPending) {
-      if (publishJsonLineToTB(json)) {
+      if (publishToAquaControl(sec2000, csvReadings, csvTemp, csvStatus)) {
         newLine = markLineSent(line);
         markEepromSentByTimestamp(sec2000);
       } else {

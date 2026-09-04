@@ -143,6 +143,9 @@ void prepareForDeepSleep(int minutes) {
   configureAlarm(interval);
 
   esp_sleep_enable_ext1_wakeup(WAKEUP_PIN_BITMASK, ESP_EXT1_WAKEUP_ALL_LOW);
+  // ponytail: timer wakeup ensures bench devkits without DS3231 INT wiring still wake up reliably
+  esp_sleep_enable_timer_wakeup((uint64_t)interval * 60 * 1000000ULL);
+
 
   // Double blink LED to visually signal transition to deep sleep
   pinMode(LED_PIN, OUTPUT);

@@ -20,6 +20,8 @@
 #include "power_sleep.h"
 #include "rtc_utils.h"
 #include "sensor_engine.h"
+#include "wifi_http.h"
+#include "esp_now_sender.h"
 
 /* -------------------------- Dependencies --------------------------- */
 
@@ -60,6 +62,10 @@
 #include <ESP_SSLClient.h>
 #include <PubSubClient.h>
 #include <TinyGsmClient.h>
+#endif
+
+#ifdef WIFI_MODULE
+#include <WiFi.h>
 #endif
 
 /* --------------------------- BLE Status ---------------------------- */
@@ -135,7 +141,7 @@ RTC_DATA_ATTR bool forceModemReset = false;
 bool measureDone = false;
 bool bluetoothDone = false;
 bool gprsDone = false;
-bool mqttAvailable = false;
+bool wifiAvailable = false;
 bool deviceConnected = false;
 bool readyForSleep = false;
 bool firstRun = false;
@@ -231,6 +237,9 @@ void setup() {
   EEPROM.end();
 
   normalizeConfig();
+
+  // Initialize ESP-NOW for direct controller link
+  espNowSenderInit();
 
   // RTC init
   rtc.Begin();
@@ -328,54 +337,50 @@ void setup() {
       startBLE();
     }
 
-#ifdef GPRS_MODULE
+#ifdef WIFI_MODULE
     if (moduleCfg.GPRS_time > 0 && (rtcNow.Minute() % moduleCfg.GPRS_time == 0)) {
 #ifdef DEBUG
-      Logln("TRY TO CONNECT TO GPRS AND SEND STORED DATA");
+      Logln("TRY TO CONNECT TO WIFI AND SEND STORED DATA");
 #endif
       esp_task_wdt_reset();
-      mqttAvailable = initA7670();
+      wifiAvailable = wifiConnect();
       esp_task_wdt_reset();
 
-      if (mqttAvailable) {
+      if (wifiAvailable) {
         failedTransmissionCount = 0;
 
-        sendSDPendingToThingsboard();
-        sendEEPROMToThingsboard();
-
-        unsigned long t0 = millis();
-        const unsigned long RPC_LISTEN_MS = 5000;
-        while (millis() - t0 < RPC_LISTEN_MS) {
-          esp_task_wdt_reset();
-          mqtt.loop();
-          delay(10);
+        sendSDPending();
+        uint16_t sentPages = sendEEPROMPending();
+#if defined(SENSOR_VIRTUAL)
+        if (sentPages == 0) {
+          publishToAquaControl(rtcNow.TotalSeconds(), telemetryPayload.sensorReadings,
+                               telemetryPayload.temperature, telemetryPayload.status);
         }
-        processQueuedRpcCommands();
+#endif
+
+        // ponytail: No RPC replacement needed. BLE commands cover T-x-y-z and D-YYYY-MM-DD.
       } else {
         failedTransmissionCount++;
 
 #ifdef DEBUG
-        Log("MQTT unavailable. Data remains in offline storage. (Failure ");
+        Log("WiFi unavailable. Data remains in offline storage. (Failure ");
         Log(String(failedTransmissionCount).c_str());
         Log("/");
         Log(String(MAX_FAILED_TRANSMISSIONS).c_str());
         Logln(")");
 #endif
 
-        // Force full modem reset after consecutive failures
         if (failedTransmissionCount >= MAX_FAILED_TRANSMISSIONS) {
 #ifdef DEBUG
           Logln("Too many consecutive transmission failures!");
-          Logln(" Forcing full modem reset on next cycle...");
 #endif
-          forceModemReset = true;
           failedTransmissionCount = 0;
         }
       }
 
       gprsDone = true;
     }
-#endif /* GPRS_MODULE */
+#endif /* WIFI_MODULE */
 
   } else {
     // First boot after power-on/reset
@@ -411,41 +416,43 @@ void setup() {
     takeMeasurement();
     esp_task_wdt_reset();
 
-#ifdef GPRS_MODULE
-    mqttAvailable = initA7670();
+#ifdef WIFI_MODULE
+    wifiAvailable = wifiConnect();
     esp_task_wdt_reset();
 
-    if (mqttAvailable) {
+    if (wifiAvailable) {
       failedTransmissionCount = 0;
 
-      sendSDPendingToThingsboard();
-      sendEEPROMToThingsboard();
-
-      unsigned long t0 = millis();
-      const unsigned long RPC_LISTEN_MS = 5000;
-      while (millis() - t0 < RPC_LISTEN_MS) {
-        esp_task_wdt_reset();
-        mqtt.loop();
-        delay(10);
+      sendSDPending();
+      uint16_t sentPages = sendEEPROMPending();
+#if defined(SENSOR_VIRTUAL)
+      if (sentPages == 0) {
+        publishToAquaControl(rtcNow.TotalSeconds(), telemetryPayload.sensorReadings,
+                             telemetryPayload.temperature, telemetryPayload.status);
       }
-      processQueuedRpcCommands();
+#endif
     } else {
       failedTransmissionCount++;
 
 #ifdef DEBUG
-      Log("MQTT unavailable on first run. Data saved to offline storage. (Failure ");
+      Log("WiFi unavailable on first run. Data saved to offline storage. (Failure ");
       Log(String(failedTransmissionCount).c_str());
       Log("/");
       Log(String(MAX_FAILED_TRANSMISSIONS).c_str());
       Logln(")");
 #endif
-
-      // Note: firstRun already true, will retry with full reset next cycle
     }
 
     gprsDone = true;
-#endif /* GPRS_MODULE */
+#endif /* WIFI_MODULE */
   }
+
+#ifdef WIFI_MODULE
+  if (gprsDone) {
+    wifiDisconnect();
+    esp_task_wdt_reset();
+  }
+#endif
 
 #ifdef GPRS_MODULE
   if (gprsDone) {

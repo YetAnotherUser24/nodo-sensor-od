@@ -74,9 +74,9 @@ static inline bool isPlausibleMeasurement(float temperature, float od) {
  *   3. Modbus read 10 registers from 0x0053
  *   4. Float decoding and scaling to int16_t:
  *        values[0] = Temp (centi °C = °C * 100)
- *        values[1] = DO (milli-mg/L = mg/L * 1000)
- *        values[2] = DO %Sat (deci %Sat = % * 10)
- *        values[3] = P3 (* 100)
+ *        values[1] = DO %Sat (deci %Sat = % * 10)
+ *        values[2] = DO (milli-mg/L = mg/L * 1000)
+ *        values[3] = ppm (centi = ppm * 100)
  *        values[4] = P4 (* 100)
  *
  * @param[out] values Array of 5 int16_t to receive converted values.
@@ -148,17 +148,18 @@ static int16_t odReadAll(int16_t* values) {
   }
 
   // 4. Decode 5 floats (normal vs swapped word order)
+  // DIGISENS registers: 0x0053=Temp, 0x0055=Param1 (%Sat), 0x0057=Param2 (mg/L), 0x0059=Param3 (ppm), 0x005B=Param4
   float tempNormal = decodeFloatFromRegisters(readRes.values[0], readRes.values[1], false);
-  float doNormal = decodeFloatFromRegisters(readRes.values[2], readRes.values[3], false);
-  float satNormal = decodeFloatFromRegisters(readRes.values[4], readRes.values[5], false);
-  float p3Normal = decodeFloatFromRegisters(readRes.values[6], readRes.values[7], false);
-  float p4Normal = decodeFloatFromRegisters(readRes.values[8], readRes.values[9], false);
+  float satNormal  = decodeFloatFromRegisters(readRes.values[2], readRes.values[3], false);
+  float doNormal   = decodeFloatFromRegisters(readRes.values[4], readRes.values[5], false);
+  float p3Normal   = decodeFloatFromRegisters(readRes.values[6], readRes.values[7], false);
+  float p4Normal   = decodeFloatFromRegisters(readRes.values[8], readRes.values[9], false);
 
   float tempSwapped = decodeFloatFromRegisters(readRes.values[0], readRes.values[1], true);
-  float doSwapped = decodeFloatFromRegisters(readRes.values[2], readRes.values[3], true);
-  float satSwapped = decodeFloatFromRegisters(readRes.values[4], readRes.values[5], true);
-  float p3Swapped = decodeFloatFromRegisters(readRes.values[6], readRes.values[7], true);
-  float p4Swapped = decodeFloatFromRegisters(readRes.values[8], readRes.values[9], true);
+  float satSwapped  = decodeFloatFromRegisters(readRes.values[2], readRes.values[3], true);
+  float doSwapped   = decodeFloatFromRegisters(readRes.values[4], readRes.values[5], true);
+  float p3Swapped   = decodeFloatFromRegisters(readRes.values[6], readRes.values[7], true);
+  float p4Swapped   = decodeFloatFromRegisters(readRes.values[8], readRes.values[9], true);
 
   bool useSwapped = false;
   if (!isPlausibleMeasurement(tempNormal, doNormal) && isPlausibleMeasurement(tempSwapped, doSwapped)) {
@@ -166,14 +167,14 @@ static int16_t odReadAll(int16_t* values) {
   }
 
   float tempF = useSwapped ? tempSwapped : tempNormal;
-  float doF = useSwapped ? doSwapped : doNormal;
-  float satF = useSwapped ? satSwapped : satNormal;
-  float p3F = useSwapped ? p3Swapped : p3Normal;
-  float p4F = useSwapped ? p4Swapped : p4Normal;
+  float satF  = useSwapped ? satSwapped : satNormal;
+  float doF   = useSwapped ? doSwapped : doNormal;
+  float p3F   = useSwapped ? p3Swapped : p3Normal;
+  float p4F   = useSwapped ? p4Swapped : p4Normal;
 
 #ifdef DEBUG
-  Logf("[OD][DBG] T=%.2f C, DO=%.3f mg/L, Sat=%.2f %%, P3=%.2f, P4=%.2f (order=%s)\n", tempF, doF,
-       satF, p3F, p4F, useSwapped ? "swapped" : "normal");
+  Logf("[OD][DBG] T=%.2f C, Sat=%.2f %%, DO=%.3f mg/L, ppm=%.2f, P4=%.2f (order=%s)\n", tempF, satF,
+       doF, p3F, p4F, useSwapped ? "swapped" : "normal");
 #endif
 
   if (isDigisensMeasurementError(static_cast<uint16_t>(tempF)) ||
@@ -193,9 +194,9 @@ static int16_t odReadAll(int16_t* values) {
   }
 
   values[0] = static_cast<int16_t>(roundf(tempF * 100.0f));  // centi °C
-  values[1] = static_cast<int16_t>(roundf(doF * 1000.0f)); // milli-mg/L (e.g. 8.456 mg/L -> 8456)
-  values[2] = static_cast<int16_t>(roundf(satF * 10.0f));    // deci %Sat (e.g. 98.5% -> 985)
-  values[3] = static_cast<int16_t>(roundf(p3F * 100.0f));
+  values[1] = static_cast<int16_t>(roundf(satF * 10.0f));    // deci %Sat (e.g. 98.5% -> 985)
+  values[2] = static_cast<int16_t>(roundf(doF * 1000.0f));  // milli-mg/L (e.g. 8.456 mg/L -> 8456)
+  values[3] = static_cast<int16_t>(roundf(p3F * 100.0f));    // centi ppm
   values[4] = static_cast<int16_t>(roundf(p4F * 100.0f));
 
   return 0;
@@ -263,8 +264,8 @@ void sensorReadAll(TelemetryPayload& tp) {
   float simSatPct = 95.0f + 6.0f * sinf(simAngle);
 
   tp.sensorReadings[0] = (int16_t)roundf(simTempC * 100.0f);   // centi-°C
-  tp.sensorReadings[1] = (int16_t)roundf(simDoMgL * 1000.0f);  // milli-mg/L
-  tp.sensorReadings[2] = (int16_t)roundf(simSatPct * 10.0f);   // deci-%
+  tp.sensorReadings[1] = (int16_t)roundf(simSatPct * 10.0f);   // deci-%Sat
+  tp.sensorReadings[2] = (int16_t)roundf(simDoMgL * 1000.0f);  // milli-mg/L
   tp.sensorReadings[3] = 0;
   tp.sensorReadings[4] = 0;
 
@@ -287,9 +288,9 @@ void sensorReadAll(TelemetryPayload& tp) {
   tp.status = 0x00000000; // nominal, no sensor comm failure
 
   Logf("[VIRTUAL] DO: %d.%03d mg/L | Temp: %d.%02d C | Sat: %d.%d %% | Bat: %u mV\n",
-       tp.sensorReadings[1] / 1000, abs(tp.sensorReadings[1] % 1000),
+       tp.sensorReadings[2] / 1000, abs(tp.sensorReadings[2] % 1000),
        tp.sensorReadings[0] / 100, abs(tp.sensorReadings[0] % 100),
-       tp.sensorReadings[2] / 10, abs(tp.sensorReadings[2] % 10),
+       tp.sensorReadings[1] / 10, abs(tp.sensorReadings[1] % 10),
        (unsigned int)tp.battery);
 }
 
@@ -399,7 +400,7 @@ int16_t readPrimarySensorRealtime() {
 
   int16_t values[OD_NUM_READINGS] = {0};
   if (odReadAll(values) == 0) {
-    return values[1]; // Return DO in milli-mg/L (e.g. 8456 for 8.456 mg/L)
+    return values[2]; // Return DO in milli-mg/L (e.g. 8456 for 8.456 mg/L)
   }
 
   return -1;

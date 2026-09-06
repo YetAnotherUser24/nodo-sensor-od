@@ -68,15 +68,15 @@ pio run -e od-logger-sd -t upload
     "battery": 3840,
     "temperature": 2300,
     "status": 0,
-    "sensorReadings": [2150, 8456, 985, 120, 0, 3840]
+    "sensorReadings": [2150, 985, 8456, 120, 0, 3840]
   }
 }
 ```
 
 * `sensorReadings`:
   - `[0]`: Water Temp (21.50 °C)
-  - `[1]`: Dissolved Oxygen (8.456 mg/L)
-  - `[2]`: DO Saturation (98.5 %Sat)
+  - `[1]`: DO Saturation (98.5 %Sat)
+  - `[2]`: Dissolved Oxygen (8.456 mg/L)
   - `[3]`: Parameter 3 (1.20)
   - `[4]`: Parameter 4 (0.00)
   - `[5]`: Battery (3840 mV)
@@ -88,6 +88,6 @@ pio run -e od-logger-sd -t upload
 ## CSV File Format (`/YYYYMMDD.CSV`)
 
 ```csv
-datetime, seconds_since_2000, water_temp_centi, do_milli_mg_l, do_sat_deci_pct, param3_centi, param4_centi, battery_mv, rtc_temp_centi, status, sent
-2026/09/02 19:40:00, 841779600, 2150, 8456, 985, 120, 0, 3840, 2300, 0, 1
+datetime, seconds_since_2000, water_temp_centi, do_sat_deci_pct, do_milli_mg_l, param3_centi, param4_centi, battery_mv, rtc_temp_centi, status, sent
+2026/09/02 19:40:00, 841779600, 2150, 985, 8456, 120, 0, 3840, 2300, 0, 1
 ```

@@ -303,9 +303,9 @@ void takeMeasurement() {
   espNowPkt.magic = AQUACONTROL_PACKET_MAGIC;
   espNowPkt.sequence = ++espNowSeqCounter;
   espNowPkt.timestamp_sec = secondsSince2000;
-  espNowPkt.dissolved_oxygen = telemetryPayload.sensorReadings[1] / 1000.0f; // milli-mg/L to mg/L
   espNowPkt.water_temperature = telemetryPayload.sensorReadings[0] / 100.0f;  // centi-C to C
-  espNowPkt.oxygen_saturation = telemetryPayload.sensorReadings[2] / 10.0f;   // deci-% to %
+  espNowPkt.oxygen_saturation = telemetryPayload.sensorReadings[1] / 10.0f;   // deci-% to %
+  espNowPkt.dissolved_oxygen = telemetryPayload.sensorReadings[2] / 1000.0f; // milli-mg/L to mg/L
   espNowPkt.battery_voltage = telemetryPayload.battery / 1000.0f;             // mV to V
   espNowPkt.status_flags = telemetryPayload.status;
   espNowBroadcastDO(espNowPkt);
@@ -611,7 +611,7 @@ void getFilename(const RtcDateTime& ts) {
 #ifdef SD_MODULE
 static void writeCsvHeader(SdFile& file) {
   file.print(F("datetime, seconds_since_2000"));
-  file.print(F(", water_temp_centi, do_milli_mg_l, do_sat_deci_pct, param3_centi, param4_centi"));
+  file.print(F(", water_temp_centi, do_sat_deci_pct, do_milli_mg_l, param3_centi, param4_centi"));
 #if defined(SENSOR_BATTERY_ADC) || defined(SENSOR_INA226)
   file.print(F(", battery_mv"));
 #endif

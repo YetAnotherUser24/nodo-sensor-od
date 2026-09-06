@@ -78,8 +78,8 @@
  *  Communicates via Modbus RTU over RS-485 at 9600 baud (8N1).
  *  Readings:
  *    [0] = Water Temperature (centi-°C)
- *    [1] = Dissolved Oxygen (milli-mg/L)
- *    [2] = DO Saturation (deci-%Sat)
+ *    [1] = DO Saturation (deci-%Sat)
+ *    [2] = Dissolved Oxygen (milli-mg/L)
  *    [3] = Parameter 3 (centi)
  *    [4] = Parameter 4 (centi)
  *    [5] = Battery Voltage (mV)
@@ -130,7 +130,7 @@
 #endif
 #ifndef OD_NUM_READINGS
 // 5 decoded float readings from 10 holding registers:
-// [0]=Temp (centi °C), [1]=DO (milli-mg/L), [2]=DO Sat (deci %Sat), [3]=P3, [4]=P4
+// [0]=Temp (centi °C), [1]=DO Sat (deci %Sat), [2]=DO (milli-mg/L), [3]=ppm (centi), [4]=P4
 #define OD_NUM_READINGS 5
 #endif
 

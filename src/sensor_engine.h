@@ -4,8 +4,8 @@
  *
  * Provides functions to collect all sensor readings into TelemetryPayload:
  *   tp.sensorReadings[0] = Water Temperature (centi-°C)
- *   tp.sensorReadings[1] = Dissolved Oxygen (milli-mg/L)
- *   tp.sensorReadings[2] = DO Saturation (deci-%Sat)
+ *   tp.sensorReadings[1] = DO Saturation (deci-%Sat)
+ *   tp.sensorReadings[2] = Dissolved Oxygen (milli-mg/L)
  *   tp.sensorReadings[3] = Parameter 3 (centi)
  *   tp.sensorReadings[4] = Parameter 4 (centi)
  *   tp.sensorReadings[5] = Battery Voltage (mV, from ADC or INA226)

@@ -225,8 +225,8 @@ void oledUpdateMonitor(const TelemetryPayload& tp, const RtcDateTime& dt, uint32
                     (unsigned int)dt.Second(), bleDeviceConnected ? "[BLE]" : "[ADV]",
                     (unsigned int)intervalSec);
 
-  float doValue = tp.sensorReadings[1] / 1000.0f;
-  float satValue = tp.sensorReadings[2] / 10.0f;
+  float satValue = tp.sensorReadings[1] / 10.0f;
+  float doValue = tp.sensorReadings[2] / 1000.0f;
   float tempValue = tp.sensorReadings[0] / 100.0f;
   float p3Value = tp.sensorReadings[3] / 100.0f;
 

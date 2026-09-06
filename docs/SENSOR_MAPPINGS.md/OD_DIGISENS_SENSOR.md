@@ -14,8 +14,8 @@ DIGISENS sensors require an explicit measurement order before reading registers.
 | Register | PLC Address | Parameter | Type | Format | Telemetry Slot | Scale / Conversion | Units |
 |----------|-------------|-----------|------|--------|----------------|--------------------|-------|
 | 0x0053-0x0054 | 40084-40085 | Temperature | float (32-bit) | IEEE 754 | `sensorReadings[0]` | `temp * 100` (centi-°C) | °C |
-| 0x0055-0x0056 | 40086-40087 | Parameter 1: Dissolved Oxygen | float (32-bit) | IEEE 754 | `sensorReadings[1]` | `DO * 1000` (milli-mg/L) | mg/L (ppm) |
-| 0x0057-0x0058 | 40088-40089 | Parameter 2: DO Saturation | float (32-bit) | IEEE 754 | `sensorReadings[2]` | `Sat * 10` (deci-%Sat) | % |
+| 0x0055-0x0056 | 40086-40087 | Parameter 1: DO Saturation | float (32-bit) | IEEE 754 | `sensorReadings[1]` | `Sat * 10` (deci-%Sat) | % |
+| 0x0057-0x0058 | 40088-40089 | Parameter 2: Dissolved Oxygen | float (32-bit) | IEEE 754 | `sensorReadings[2]` | `DO * 1000` (milli-mg/L) | mg/L (ppm) |
 | 0x0059-0x005A | 40090-40091 | Parameter 3: Raw / Reserved | float (32-bit) | IEEE 754 | `sensorReadings[3]` | `P3 * 100` | — |
 | 0x005B-0x005C | 40092-40093 | Parameter 4: Raw / Reserved | float (32-bit) | IEEE 754 | `sensorReadings[4]` | `P4 * 100` | — |
 

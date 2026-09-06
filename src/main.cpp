@@ -515,7 +515,7 @@ void loop() {
         // 3. Extract primary measurement for BLE notification (if client connected)
         if (bleDeviceConnected && pServer != nullptr) {
           int16_t primaryReading =
-              telemetryPayload.sensorReadings[1]; // DO in milli-mg/L (e.g. 8456 -> 8.456 mg/L)
+              telemetryPayload.sensorReadings[2]; // DO in milli-mg/L (e.g. 8456 -> 8.456 mg/L)
 
           static char readingBuf[16];
           itoa(primaryReading, readingBuf, 10);
@@ -534,8 +534,8 @@ void loop() {
                abs(primaryReading % 1000), readingBuf);
         } else {
           Logf("[MONITOR] Saved DO: %d.%03d mg/L (Client disconnected)\n",
-               telemetryPayload.sensorReadings[1] / 1000,
-               abs(telemetryPayload.sensorReadings[1] % 1000));
+               telemetryPayload.sensorReadings[2] / 1000,
+               abs(telemetryPayload.sensorReadings[2] % 1000));
         }
 
         bleStartTime = millis(); // Refresh BLE active window while monitoring is active

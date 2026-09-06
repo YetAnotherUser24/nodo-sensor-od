@@ -242,10 +242,17 @@ void setup() {
   espNowSenderInit();
 
   // RTC init
-  rtc.Begin();
-  rtc.Enable32kHzPin(false);
-  rtc.SetSquareWavePin(DS3231SquareWavePin_ModeAlarmBoth);
-  rtcNow = rtc.GetDateTime();
+  rtcInit();
+  rtcNow = getRtcDateTime();
+
+#ifdef WIFI_MODULE
+  // If time is not calibrated (year < 2020), synchronize via WiFi NTP
+  if (rtcNow.Year() < 2020) {
+    Logln("RTC time uncalibrated. Attempting initial WiFi NTP sync...");
+    syncTimeNtp(10000);
+    rtcNow = getRtcDateTime();
+  }
+#endif
 
   // SD bus init
 #ifdef SD_MODULE
@@ -292,10 +299,20 @@ void setup() {
 #endif
 
   // Wake-up flow
-  if (esp_sleep_get_wakeup_cause() == ESP_SLEEP_WAKEUP_EXT1) {
+  esp_sleep_wakeup_cause_t wakeupCause = esp_sleep_get_wakeup_cause();
+  if (wakeupCause == ESP_SLEEP_WAKEUP_EXT1 || wakeupCause == ESP_SLEEP_WAKEUP_TIMER) {
+    rtcNow = getRtcDateTime();
 
-    // Optional daily flush at 00:00
-    if (rtcNow.Hour() == 0 && rtcNow.Minute() == 0) {
+#ifdef WIFI_MODULE
+    if (rtcNow.Year() < 2020) {
+      syncTimeNtp(5000);
+      rtcNow = getRtcDateTime();
+    }
+#endif
+
+    // Optional daily flush at 00:00 (only when SD and EEPROM are present)
+#ifdef SD_MODULE
+    if (isEepromAvailable() && rtcNow.Hour() == 0 && rtcNow.Minute() == 0) {
       if (dumpEEPROM()) {
         resetEEPromHeader(EEPROM_ADDRESS);
         eepromWritePage = 0;
@@ -309,6 +326,7 @@ void setup() {
         error(3, LED_PIN);
       }
     }
+#endif
 
     // Measurement window
     if (moduleCfg.measure_time > 0 && (rtcNow.Minute() % moduleCfg.measure_time == 0)) {
@@ -385,24 +403,28 @@ void setup() {
   } else {
     // First boot after power-on/reset
     firstRun = true;
+#ifdef SD_MODULE
+    if (isEepromAvailable()) {
 #ifdef DEBUG
-    uint16_t freePages = getEEPROMFreePages();
-    uint16_t totalPages = EEPROM_MAX_PAGES - EEPROM_HEADER_SIZE;
-    Logf("FLUSHING EEPROM TO SD CARD (Used: %u / %u pages)...\n", totalPages - freePages,
-         totalPages);
+      uint16_t freePages = getEEPROMFreePages();
+      uint16_t totalPages = EEPROM_MAX_PAGES - EEPROM_HEADER_SIZE;
+      Logf("FLUSHING EEPROM TO SD CARD (Used: %u / %u pages)...\n", totalPages - freePages,
+           totalPages);
 #endif
 
-    if (dumpEEPROM()) {
-      resetEEPromHeader(EEPROM_ADDRESS);
+      if (dumpEEPROM()) {
+        resetEEPromHeader(EEPROM_ADDRESS);
 #ifdef DEBUG
-      Logln("- EEPROM flushed.");
+        Logln("- EEPROM flushed.");
 #endif
-    } else {
+      } else {
 #ifdef DEBUG
-      Logln("Failed to flush EEPROM. SD card missing? Continuing anyway.");
+        Logln("Failed to flush EEPROM. SD card missing? Continuing anyway.");
 #endif
-      error(3, LED_PIN);
+        error(3, LED_PIN);
+      }
     }
+#endif
 
     esp_task_wdt_reset();
     delay(1000);
@@ -448,10 +470,12 @@ void setup() {
   }
 
 #ifdef WIFI_MODULE
+#if !defined(SENSOR_VIRTUAL)
   if (gprsDone) {
     wifiDisconnect();
     esp_task_wdt_reset();
   }
+#endif
 #endif
 
 #ifdef GPRS_MODULE
@@ -486,6 +510,45 @@ void loop() {
     Logln("Restarting BLE advertising...");
     pServer->getAdvertising()->start();
   }
+
+#if defined(SENSOR_VIRTUAL)
+  /* Continuous streaming loop for virtual dashboard test (sends every 5 seconds) */
+  static unsigned long lastVirtualSend = 0;
+  if (millis() - lastVirtualSend >= 5000) {
+    lastVirtualSend = millis();
+
+    takeMeasurement();
+
+#ifdef WIFI_MODULE
+    if (WiFi.status() != WL_CONNECTED) {
+      Logln("WiFi reconnecting...");
+      wifiConnect();
+    }
+
+    publishToAquaControl(rtcNow.TotalSeconds(), telemetryPayload.sensorReadings,
+                         telemetryPayload.temperature, telemetryPayload.status);
+#endif
+
+    oledUpdateMonitor(telemetryPayload, rtcNow, 5);
+
+    if (bleDeviceConnected && pServer != nullptr) {
+      int16_t primaryReading = telemetryPayload.sensorReadings[1];
+      static char readingBuf[16];
+      itoa(primaryReading, readingBuf, 10);
+      if (pNotifyCharacteristic != nullptr) {
+        pNotifyCharacteristic->setValue((const char*)readingBuf);
+        pNotifyCharacteristic->notify();
+      }
+      if (pCharacteristic != nullptr) {
+        pCharacteristic->setValue((const char*)readingBuf);
+        pCharacteristic->notify();
+      }
+    }
+  }
+
+  delay(50);
+  return;
+#endif
 
   if (bleActive) {
     static unsigned long lastBleReport = 0;

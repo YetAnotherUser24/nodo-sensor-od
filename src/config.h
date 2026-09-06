@@ -10,7 +10,7 @@
 
 #define AQUACONTROL_HOST       "tesisutec.vercel.app"
 #define AQUACONTROL_PATH       "/api/telemetry/sensor"
-#define AQUACONTROL_DEVICE_KEY "ESP32_SENSOR_KEY_2026"
+#define AQUACONTROL_DEVICE_KEY "ESP32_OD_SENSOR"
 
 /* ------------------------------ BLE ---------------------------------- */
 

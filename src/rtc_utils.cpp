@@ -9,8 +9,11 @@
 #include "rtc_utils.h"
 
 #include "board.h"
+#include "log.h"
+#include "n_logger_config.h"
 #include <RtcDS3231.h>
 #include <Wire.h>
+#include <time.h>
 
 /* --------------------------------------------------------------------------
  *  External variables defined in main program
@@ -20,9 +23,56 @@ extern RtcDS3231<TwoWire> rtc;
 extern RtcDateTime rtcNow;
 extern char dateStr[20];
 
+static int s_rtcAvailable = -1; // -1: unprobed, 0: absent, 1: present
+
 #ifndef countof
 #define countof(a) (sizeof(a) / sizeof(a[0]))
 #endif
+
+/* --------------------------------------------------------------------------
+ *  RTC Probing & Initialization
+ * -------------------------------------------------------------------------- */
+
+bool isRtcAvailable() {
+  if (s_rtcAvailable == -1) {
+    Wire.beginTransmission(0x68);
+    s_rtcAvailable = (Wire.endTransmission() == 0) ? 1 : 0;
+  }
+  return s_rtcAvailable == 1;
+}
+
+bool rtcInit() {
+  Wire.beginTransmission(0x68);
+  s_rtcAvailable = (Wire.endTransmission() == 0) ? 1 : 0;
+
+  if (s_rtcAvailable == 1) {
+    rtc.Begin();
+    rtc.Enable32kHzPin(false);
+    rtc.SetSquareWavePin(DS3231SquareWavePin_ModeAlarmBoth);
+    rtcNow = rtc.GetDateTime();
+    Logln("[RTC] DS3231 hardware RTC detected and initialized.");
+    return true;
+  }
+
+  Logln("[RTC] DS3231 not found. Using ESP32 internal RTC / NTP time.");
+  rtcNow = getRtcDateTime();
+  return false;
+}
+
+RtcDateTime getRtcDateTime() {
+  if (isRtcAvailable()) {
+    return rtc.GetDateTime();
+  }
+
+  // Fallback: ESP32 internal POSIX clock (retained through deep sleep)
+  time_t now = time(nullptr);
+  if (now >= 1577836800ULL) { // >= 2020-01-01T00:00:00Z
+    uint32_t sec2000 = (uint32_t)(now - UNIX_OFFSET_2000);
+    return RtcDateTime(sec2000);
+  }
+
+  return RtcDateTime(0); // Epoch fallback (2000-01-01)
+}
 
 /* --------------------------------------------------------------------------
  *  Timestamp Formatting
@@ -50,8 +100,14 @@ void formatDateTime(const RtcDateTime& dt) {
  *  - Computes new alarm timestamp.
  *  - Aligns alarm to the closest `minutes` interval.
  *  - Writes Alarm2 to DS3231.
+ *
+ * No-op if DS3231 is absent (ESP32 timer wakeup handles sleep interval).
  */
 void configureAlarm(int minutes) {
+  if (!isRtcAvailable()) {
+    return;
+  }
+
   rtcNow = rtc.GetDateTime();
 
   RtcDateTime alarmTime = rtcNow + (minutes * 60);

@@ -14,11 +14,20 @@
 #include "config.h"
 #include "log.h"
 #include "n_logger_config.h"
+#include "rtc_utils.h"
 
 #include <ArduinoJson.h>
 #include <HTTPClient.h>
+#include <Wire.h>
+#include <RtcDS3231.h>
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
+#include <esp_task_wdt.h>
+#include <time.h>
+
+extern RtcDS3231<TwoWire> rtc;
+extern RtcDateTime rtcNow;
+extern char dateStr[20];
 
 /* ----------------------------- WiFi Connect ----------------------------- */
 
@@ -45,12 +54,88 @@ bool wifiConnect() {
 
   Logf(" connected (IP: %s)\n", WiFi.localIP().toString().c_str());
   configTime(0, 0, "pool.ntp.org", "time.nist.gov");
+
+  // If time is not yet valid, allow up to 3s for quick initial NTP sync
+  if (time(nullptr) < 1577836800ULL) {
+    unsigned long tNtp = millis();
+    while (time(nullptr) < 1577836800ULL && (millis() - tNtp < 3000)) {
+      delay(100);
+    }
+    if (time(nullptr) >= 1577836800ULL) {
+      rtcNow = getRtcDateTime();
+      if (isRtcAvailable()) {
+        rtc.SetDateTime(rtcNow);
+      }
+    }
+  }
+
   return true;
+}
+
+/* ----------------------------- NTP Time Sync ----------------------------- */
+
+bool syncTimeNtp(uint32_t timeoutMs) {
+  time_t now = time(nullptr);
+  if (now >= 1577836800ULL) {
+    // Already synchronized
+    return true;
+  }
+
+  if (WiFi.status() != WL_CONNECTED) {
+    if (!wifiConnect()) {
+      Logln("[NTP] Cannot sync time: WiFi connection failed.");
+      return false;
+    }
+  }
+
+  Logln("[NTP] Synchronizing time via NTP...");
+  configTime(0, 0, "pool.ntp.org", "time.nist.gov");
+
+  unsigned long t0 = millis();
+  while (time(nullptr) < 1577836800ULL && (millis() - t0 < timeoutMs)) {
+    delay(100);
+  }
+
+  now = time(nullptr);
+  if (now >= 1577836800ULL) {
+    rtcNow = getRtcDateTime();
+    formatDateTime(rtcNow);
+    Logf("[NTP] Time synchronized successfully: %s GMT\n", dateStr);
+
+    if (isRtcAvailable()) {
+      rtc.SetDateTime(rtcNow);
+      Logln("[NTP] Hardware DS3231 RTC synchronized with NTP.");
+    }
+    return true;
+  }
+
+  Logln("[NTP] Time sync timed out.");
+  return false;
+}
+
+#include <lwip/sockets.h>
+
+/* ----------------------------- Persistent HTTP Client ----------------------------- */
+
+static WiFiClientSecure s_client;
+static HTTPClient s_http;
+static bool s_clientConfigured = false;
+
+static void closeHttpConnection() {
+  s_http.end();
+  int fd = s_client.fd();
+  if (fd >= 0) {
+    struct linger sl = { 1, 0 }; // Linger on with timeout 0 -> sends RST, avoids 60s TIME_WAIT
+    setsockopt(fd, SOL_SOCKET, SO_LINGER, &sl, sizeof(sl));
+  }
+  s_client.stop();
 }
 
 /* ----------------------------- WiFi Disconnect ----------------------------- */
 
 void wifiDisconnect() {
+  closeHttpConnection();
+
 #if !defined(DISABLE_ESPNOW)
   WiFi.disconnect(false, false);
   WiFi.mode(WIFI_STA); // ponytail: preserve STA mode so ESP-NOW direct link does not terminate
@@ -116,30 +201,64 @@ bool publishToAquaControl(uint32_t seconds2000, int16_t* readings,
   Logln(jsonOut.c_str());
 #endif
 
-  WiFiClientSecure client;
-  client.setInsecure(); // ponytail: skip cert pin — Vercel rotates certs, pinning would break
-
-  HTTPClient http;
-  String url = String("https://") + AQUACONTROL_HOST + AQUACONTROL_PATH;
-
-  if (!http.begin(client, url)) {
-    Logln("   HTTP begin failed");
-    return false;
+  if (!s_clientConfigured) {
+    s_client.setInsecure(); // ponytail: skip cert pin — Vercel rotates certs, pinning would break
+    s_client.setHandshakeTimeout(4); // 4s TLS handshake timeout
+    s_client.setTimeout(4);          // 4s socket stream timeout
+    s_clientConfigured = true;
   }
 
-  http.addHeader("Content-Type", "application/json");
-  http.addHeader("X-Device-Key", AQUACONTROL_DEVICE_KEY);
-  http.setTimeout(10000);
+  String url = String("https://") + AQUACONTROL_HOST + AQUACONTROL_PATH;
 
-  int httpCode = http.POST(jsonOut);
-  String response = http.getString();
-  http.end();
+  // If not connected, initialize HTTPClient with persistent Keep-Alive
+  if (!s_http.connected()) {
+    s_http.begin(s_client, url);
+    s_http.setReuse(true); // HTTP/1.1 Keep-Alive persistent connection
+    s_http.setConnectTimeout(4000);
+    s_http.setTimeout(4000);
+  }
 
+  s_http.addHeader("Content-Type", "application/json");
+  s_http.addHeader("X-Device-Key", AQUACONTROL_DEVICE_KEY);
+
+  esp_task_wdt_reset();
+  int httpCode = s_http.POST(jsonOut);
+  esp_task_wdt_reset();
+
+  if (httpCode > 0) {
+    String response = s_http.getString(); // Consumes body to keep stream aligned for next request
 #ifdef DEBUG
-  Logf("   HTTP %d: %s\n", httpCode, response.c_str());
+    Logf("   HTTP %d: %s\n", httpCode, response.c_str());
 #endif
+    return (httpCode >= 200 && httpCode < 300);
+  }
 
-  return (httpCode >= 200 && httpCode < 300);
+  // If POST failed (e.g. idle keep-alive timed out on Vercel), reset socket and retry once
+  Logf("   Persistent connection dropped (err %d), reconnecting...\n", httpCode);
+  closeHttpConnection();
+
+  s_http.begin(s_client, url);
+  s_http.setReuse(true);
+  s_http.setConnectTimeout(4000);
+  s_http.setTimeout(4000);
+  s_http.addHeader("Content-Type", "application/json");
+  s_http.addHeader("X-Device-Key", AQUACONTROL_DEVICE_KEY);
+
+  esp_task_wdt_reset();
+  httpCode = s_http.POST(jsonOut);
+  esp_task_wdt_reset();
+
+  if (httpCode > 0) {
+    String response = s_http.getString();
+#ifdef DEBUG
+    Logf("   HTTP %d (retry): %s\n", httpCode, response.c_str());
+#endif
+    return (httpCode >= 200 && httpCode < 300);
+  }
+
+  Logf("   HTTP POST retry failed: %s (err %d)\n", s_http.errorToString(httpCode).c_str(), httpCode);
+  closeHttpConnection();
+  return false;
 }
 
 #endif // WIFI_MODULE

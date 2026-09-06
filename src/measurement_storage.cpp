@@ -89,6 +89,10 @@ String markLineSent(const String& line) {
  * @brief Count free EEPROM pages using bit-mapped header.
  */
 uint16_t getEEPROMFreePages() {
+  if (!isEepromAvailable()) {
+    return 0;
+  }
+
   uint8_t header[EEPROM_HEADER_SIZE];
 
   i2c_eeprom_read_buffer(EEPROM_ADDRESS, 0, header, EEPROM_HEADER_SIZE);
@@ -108,6 +112,7 @@ uint16_t getEEPROMFreePages() {
  * @brief Clears external I2C EEPROM header and resets page write pointer.
  */
 void clearEEPROM() {
+  if (!isEepromAvailable()) return;
   resetEEPromHeader(EEPROM_ADDRESS);
   eepromWritePage = 0;
   needFlushToSD = false;
@@ -118,6 +123,10 @@ void clearEEPROM() {
  * @brief Logs EEPROM storage status or dumps an unpacked page record.
  */
 void peekEEPROM(int16_t pageIndex) {
+  if (!isEepromAvailable()) {
+    Logln("No external EEPROM detected.");
+    return;
+  }
   uint16_t totalPages = EEPROM_MAX_PAGES - EEPROM_HEADER_SIZE;
   uint16_t freePages = getEEPROMFreePages();
   uint16_t usedPages = totalPages - freePages;
@@ -275,23 +284,29 @@ void takeMeasurement() {
 #endif
   telemetryPayload.status = 0x00000000;
 
-  rtcNow = rtc.GetDateTime();
-  for (int retry = 0; retry < 3 && rtcNow.Year() < 2020; retry++) {
-    delay(20);
-    rtcNow = rtc.GetDateTime();
+  rtcNow = getRtcDateTime();
+  if (isRtcAvailable()) {
+    for (int retry = 0; retry < 3 && rtcNow.Year() < 2020; retry++) {
+      delay(20);
+      rtcNow = rtc.GetDateTime();
+    }
   }
   uint32_t secondsSince2000 = rtcNow.TotalSeconds();
 
-  /* Temperature from RTC (always included) */
-  int16_t tempCenti = rtc.GetTemperature().AsCentiDegC();
-  if (tempCenti == 0 && rtcNow.Year() >= 2020) {
-    delay(10);
+  /* Temperature from RTC (always included if RTC present) */
+  int16_t tempCenti = 0;
+  if (isRtcAvailable()) {
     tempCenti = rtc.GetTemperature().AsCentiDegC();
+    if (tempCenti == 0 && rtcNow.Year() >= 2020) {
+      delay(10);
+      tempCenti = rtc.GetTemperature().AsCentiDegC();
+    }
+    if (tempCenti < -4000 || tempCenti > 8500)
+      telemetryPayload.status = changeBit(telemetryPayload.status, STATUS_TEMPERATURE_BIT, true);
+  } else {
+    tempCenti = 2500; // 25.0 C ambient fallback for bare ESP32 / virtual mode
   }
   telemetryPayload.temperature = tempCenti;
-
-  if (tempCenti < -4000 || tempCenti > 8500)
-    telemetryPayload.status = changeBit(telemetryPayload.status, STATUS_TEMPERATURE_BIT, true);
 
   /* Sensor sampling via sensor engine (handles all enabled sensors) */
   sensorReadAll(telemetryPayload);
@@ -354,50 +369,53 @@ void takeMeasurement() {
   Logln("==========================================");
 #endif
 
-  /* EEPROM page building: ts(4) + readings(N*2) + temp(2) + status(4) + pad + sent */
-  for (int i = 0; i < 4; i++)
-    eepromPageBuf[i] = ((byte*)&secondsSince2000)[i];
+  /* EEPROM storage only if external I2C EEPROM hardware is present */
+  if (isEepromAvailable()) {
+    /* EEPROM page building: ts(4) + readings(N*2) + temp(2) + status(4) + pad + sent */
+    for (int i = 0; i < 4; i++)
+      eepromPageBuf[i] = ((byte*)&secondsSince2000)[i];
 
-  for (int i = 0; i < MAX_SENSOR_READINGS * 2; i++)
-    eepromPageBuf[i + 4] = ((byte*)telemetryPayload.sensorReadings)[i];
+    for (int i = 0; i < MAX_SENSOR_READINGS * 2; i++)
+      eepromPageBuf[i + 4] = ((byte*)telemetryPayload.sensorReadings)[i];
 
-  for (int i = 0; i < 2; i++)
-    eepromPageBuf[i + 4 + MAX_SENSOR_READINGS * 2] = ((byte*)&tempCenti)[i];
+    for (int i = 0; i < 2; i++)
+      eepromPageBuf[i + 4 + MAX_SENSOR_READINGS * 2] = ((byte*)&tempCenti)[i];
 
-  for (int i = 0; i < 4; i++)
-    eepromPageBuf[i + 4 + MAX_SENSOR_READINGS * 2 + 2] = ((byte*)&telemetryPayload.status)[i];
+    for (int i = 0; i < 4; i++)
+      eepromPageBuf[i + 4 + MAX_SENSOR_READINGS * 2 + 2] = ((byte*)&telemetryPayload.status)[i];
 
-  for (int i = 4 + MAX_SENSOR_READINGS * 2 + 2 + 4; i < EEPROM_PAGE_SIZE - 1; i++)
-    eepromPageBuf[i] = 0;
+    for (int i = 4 + MAX_SENSOR_READINGS * 2 + 2 + 4; i < EEPROM_PAGE_SIZE - 1; i++)
+      eepromPageBuf[i] = 0;
 
-  eepromPageBuf[EEPROM_SENT_FLAG_OFFSET] = FLAG_NOT_SENT;
+    eepromPageBuf[EEPROM_SENT_FLAG_OFFSET] = FLAG_NOT_SENT;
 
-  unsigned int dataAddr = (eepromWritePage + EEPROM_HEADER_SIZE) * EEPROM_PAGE_SIZE;
+    unsigned int dataAddr = (eepromWritePage + EEPROM_HEADER_SIZE) * EEPROM_PAGE_SIZE;
 
-  i2c_eeprom_write_page(EEPROM_ADDRESS, dataAddr, eepromPageBuf, EEPROM_PAGE_SIZE);
-  delay(50);
+    i2c_eeprom_write_page(EEPROM_ADDRESS, dataAddr, eepromPageBuf, EEPROM_PAGE_SIZE);
+    delay(50);
 
-  /* Update header bit */
-  byte headerByte = i2c_eeprom_read_byte(EEPROM_ADDRESS, (uint16_t)eepromWritePage / 8);
+    /* Update header bit */
+    byte headerByte = i2c_eeprom_read_byte(EEPROM_ADDRESS, (uint16_t)eepromWritePage / 8);
 
-  bitWrite(headerByte, eepromWritePage % 8, 1);
-  i2c_eeprom_write_byte(EEPROM_ADDRESS, (uint16_t)eepromWritePage / 8, headerByte);
+    bitWrite(headerByte, eepromWritePage % 8, 1);
+    i2c_eeprom_write_byte(EEPROM_ADDRESS, (uint16_t)eepromWritePage / 8, headerByte);
 
-  eepromWritePage++;
+    eepromWritePage++;
 
-  if (eepromWritePage >= EEPROM_FLUSH_AFTER)
-    needFlushToSD = true;
+    if (eepromWritePage >= EEPROM_FLUSH_AFTER)
+      needFlushToSD = true;
 
-  if (needFlushToSD) {
-    if (dumpEEPROM()) {
-      resetEEPromHeader(EEPROM_ADDRESS);
-      eepromWritePage = 0;
-      needFlushToSD = false;
+    if (needFlushToSD) {
+      if (dumpEEPROM()) {
+        resetEEPromHeader(EEPROM_ADDRESS);
+        eepromWritePage = 0;
+        needFlushToSD = false;
+      }
     }
-  }
 
-  if (eepromWritePage > (EEPROM_MAX_PAGES - EEPROM_HEADER_SIZE))
-    eepromWritePage = 0;
+    if (eepromWritePage > (EEPROM_MAX_PAGES - EEPROM_HEADER_SIZE))
+      eepromWritePage = 0;
+  }
 
   error(1, LED_PIN);
 }
@@ -447,8 +465,10 @@ void sendSDPending() {
 
 uint16_t sendEEPROMPending() {
 #ifdef WIFI_MODULE
-  if (!wifiAvailable) {
-    Logln("WiFi unavailable, skipping EEPROM uploads.");
+  if (!wifiAvailable || !isEepromAvailable()) {
+    if (!wifiAvailable) {
+      Logln("WiFi unavailable, skipping EEPROM uploads.");
+    }
     return 0;
   }
 
@@ -494,6 +514,10 @@ uint16_t sendEEPROMPending() {
 
 uint8_t dumpEEPROM() {
 #ifdef SD_MODULE
+  if (!isEepromAvailable()) {
+    return 1; // Nothing to dump
+  }
+
   uint16_t i = 0, j = 0;
   bool keep = true;
   bool failure = false;

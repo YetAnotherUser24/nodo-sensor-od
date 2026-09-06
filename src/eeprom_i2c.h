@@ -11,6 +11,13 @@
 #include <Arduino.h>
 
 /**
+ * @brief Checks if an external I2C EEPROM chip responds on the bus.
+ * @param deviceaddress I2C address of EEPROM (default 0x50).
+ * @return true if device responds with ACK.
+ */
+bool isEepromAvailable(int deviceaddress = 0x50);
+
+/**
  * @brief Writes a full page into I2C EEPROM.
  *
  * @param deviceaddress I2C address of EEPROM (e.g., 0x50).

@@ -36,10 +36,18 @@ void wifiDisconnect();
 bool publishToAquaControl(uint32_t seconds2000, int16_t* readings,
                           int16_t rtcTempCenti, uint32_t status);
 
+/**
+ * @brief Synchronizes ESP32 internal clock via WiFi NTP, updating rtcNow and DS3231 if present.
+ * @param timeoutMs Maximum milliseconds to wait for NTP sync (default 5000).
+ * @return true if time is synchronized, false otherwise.
+ */
+bool syncTimeNtp(uint32_t timeoutMs = 5000);
+
 #else
 
 static inline bool wifiConnect() { return false; }
 static inline void wifiDisconnect() {}
+static inline bool syncTimeNtp(uint32_t = 0) { return false; }
 static inline bool publishToAquaControl(uint32_t, int16_t*, int16_t, uint32_t) {
   return false;
 }

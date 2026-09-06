@@ -132,10 +132,16 @@ static bool oledInitialized = false;
 
 extern bool bleDeviceConnected;
 
+static bool oledProbeAttempted = false;
+
 bool oledInit() {
   if (oledInitialized) {
     return true;
   }
+  if (oledProbeAttempted) {
+    return false;
+  }
+  oledProbeAttempted = true;
 
   // Ensure 3.3V I2C power rail is energized
   setPinActive(I2C_EN_PIN, I2C_EN_ACTIVE_HIGH);

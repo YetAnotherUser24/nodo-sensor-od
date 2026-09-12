@@ -284,7 +284,7 @@ void setup() {
   Serial.print(F("Current time is "));
   formatDateTime(rtcNow);
   Serial.print(dateStr);
-  Serial.println(F(" GMT\n"));
+  Serial.printf(" %s\n\n", LOCAL_TZ_NAME);
 
   Serial.println("CURRENT CONFIGURATION:");
   Serial.print("(Measure time: ");

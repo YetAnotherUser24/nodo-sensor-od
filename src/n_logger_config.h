@@ -41,6 +41,10 @@
 #define LOCAL_TZ_OFFSET_SEC (5 * 3600)
 #endif
 
+#ifndef LOCAL_TZ_NAME
+#define LOCAL_TZ_NAME "UTC-5"
+#endif
+
 /* --------------------------------------------------------------------------
  *  EEPROM Geometry (always included)
  * -------------------------------------------------------------------------- */

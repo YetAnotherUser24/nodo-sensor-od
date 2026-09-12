@@ -13,6 +13,7 @@
 #include "n_logger_config.h"
 #include <RtcDS3231.h>
 #include <Wire.h>
+#include <sys/time.h>
 #include <time.h>
 
 /* --------------------------------------------------------------------------
@@ -51,12 +52,26 @@ bool rtcInit() {
     rtc.SetSquareWavePin(DS3231SquareWavePin_ModeAlarmBoth);
     rtcNow = rtc.GetDateTime();
     Logln("[RTC] DS3231 hardware RTC detected and initialized.");
+    if (rtcNow.Year() >= 2020) {
+      struct timeval tv = { (time_t)(rtcNow.TotalSeconds() + UNIX_OFFSET_2000 + LOCAL_TZ_OFFSET_SEC), 0 };
+      settimeofday(&tv, nullptr);
+    }
     return true;
   }
 
   Logln("[RTC] DS3231 not found. Using ESP32 internal RTC / NTP time.");
   rtcNow = getRtcDateTime();
   return false;
+}
+
+void setRtcDateTime(const RtcDateTime& dt) {
+  rtcNow = dt;
+  if (isRtcAvailable()) {
+    rtc.SetDateTime(dt);
+  }
+  uint32_t sec2000 = dt.TotalSeconds();
+  struct timeval tv = { (time_t)(sec2000 + UNIX_OFFSET_2000 + LOCAL_TZ_OFFSET_SEC), 0 };
+  settimeofday(&tv, nullptr);
 }
 
 RtcDateTime getRtcDateTime() {
@@ -67,7 +82,7 @@ RtcDateTime getRtcDateTime() {
   // Fallback: ESP32 internal POSIX clock (retained through deep sleep)
   time_t now = time(nullptr);
   if (now >= 1577836800ULL) { // >= 2020-01-01T00:00:00Z
-    uint32_t sec2000 = (uint32_t)(now - UNIX_OFFSET_2000);
+    uint32_t sec2000 = (uint32_t)(now - LOCAL_TZ_OFFSET_SEC - UNIX_OFFSET_2000);
     return RtcDateTime(sec2000);
   }
 

@@ -348,7 +348,9 @@ void takeMeasurement() {
   Log(" (");
   formatDateTime(rtcNow);
   Log(dateStr);
-  Logln(" GMT)");
+  Log(" ");
+  Log(LOCAL_TZ_NAME);
+  Logln(")");
 #if defined(SENSOR_BATTERY_ADC) || defined(SENSOR_INA226)
   Log("   Battery: ");
   Log(String(telemetryPayload.battery).c_str());

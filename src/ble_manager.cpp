@@ -26,6 +26,7 @@
 #include "board.h"
 #include "measurement_storage.h"
 #include "oled_display.h"
+#include "rtc_utils.h"
 
 /* ------------------------ External Dependencies ------------------------ */
 
@@ -307,10 +308,9 @@ void processCommand(const String& cmdIn) {
     int second = atoi(c + 19);
 
     RtcDateTime newDT(year, month, day, hour, minute, second);
-    rtc.SetDateTime(newDT);
+    setRtcDateTime(newDT);
 
     Log("New date: ");
-    rtcNow = rtc.GetDateTime();
     formatDateTime(rtcNow);
     Logln(dateStr);
 

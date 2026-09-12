@@ -37,6 +37,11 @@ bool isRtcAvailable();
 RtcDateTime getRtcDateTime();
 
 /**
+ * @brief Sets the system time and hardware DS3231 RTC (if available) to the given RtcDateTime.
+ */
+void setRtcDateTime(const RtcDateTime& dt);
+
+/**
  * @brief Configures DS3231 Alarm2 to wake the system in a given number of minutes.
  *
  * Alarm2 uses minute-match mode, waking on the next aligned interval.

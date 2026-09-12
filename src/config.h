@@ -19,3 +19,8 @@
 #define CHARACTERISTIC_NOTIFY_UUID "beb5483e-36e1-4688-b7f5-ea07361b26a9"
 
 #define BLE_ACTIVE_TIME 30000
+
+/* ------------------------------ Timezone ------------------------------ */
+
+#define LOCAL_TZ_OFFSET_SEC (5 * 3600) // UTC-5 (Peru / PET)
+#define LOCAL_TZ_NAME       "UTC-5"

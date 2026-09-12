@@ -61,11 +61,10 @@ bool wifiConnect() {
     while (time(nullptr) < 1577836800ULL && (millis() - tNtp < 3000)) {
       delay(100);
     }
-    if (time(nullptr) >= 1577836800ULL) {
-      rtcNow = getRtcDateTime();
-      if (isRtcAvailable()) {
-        rtc.SetDateTime(rtcNow);
-      }
+    time_t now = time(nullptr);
+    if (now >= 1577836800ULL) {
+      RtcDateTime ntpDt((uint32_t)(now - LOCAL_TZ_OFFSET_SEC - UNIX_OFFSET_2000));
+      setRtcDateTime(ntpDt);
     }
   }
 
@@ -77,7 +76,13 @@ bool wifiConnect() {
 bool syncTimeNtp(uint32_t timeoutMs) {
   time_t now = time(nullptr);
   if (now >= 1577836800ULL) {
-    // Already synchronized
+    RtcDateTime ntpDt((uint32_t)(now - LOCAL_TZ_OFFSET_SEC - UNIX_OFFSET_2000));
+    setRtcDateTime(ntpDt);
+    formatDateTime(rtcNow);
+    Logf("[NTP] Time already synchronized: %s %s\n", dateStr, LOCAL_TZ_NAME);
+    if (isRtcAvailable()) {
+      Logln("[NTP] Hardware DS3231 RTC synchronized.");
+    }
     return true;
   }
 
@@ -98,12 +103,12 @@ bool syncTimeNtp(uint32_t timeoutMs) {
 
   now = time(nullptr);
   if (now >= 1577836800ULL) {
-    rtcNow = getRtcDateTime();
+    RtcDateTime ntpDt((uint32_t)(now - LOCAL_TZ_OFFSET_SEC - UNIX_OFFSET_2000));
+    setRtcDateTime(ntpDt);
     formatDateTime(rtcNow);
-    Logf("[NTP] Time synchronized successfully: %s GMT\n", dateStr);
+    Logf("[NTP] Time synchronized successfully: %s %s\n", dateStr, LOCAL_TZ_NAME);
 
     if (isRtcAvailable()) {
-      rtc.SetDateTime(rtcNow);
       Logln("[NTP] Hardware DS3231 RTC synchronized with NTP.");
     }
     return true;
@@ -156,21 +161,21 @@ bool publishToAquaControl(uint32_t seconds2000, int16_t* readings,
     return false;
   }
 
-  // Build ISO 8601 datetime from seconds since 2000
+  // Build ISO 8601 datetime from seconds since 2000 (local time UTC-5)
   uint64_t unixTs = (uint64_t)seconds2000 + UNIX_OFFSET_2000;
   // If RTC provided an invalid or uninitialized timestamp (< 2020), fall back to NTP system time
   if (unixTs < 1577836800ULL) {
     time_t sysNow = time(nullptr);
     if (sysNow >= 1577836800) {
-      unixTs = (uint64_t)sysNow;
+      unixTs = (uint64_t)(sysNow - LOCAL_TZ_OFFSET_SEC);
       seconds2000 = (uint32_t)(unixTs - UNIX_OFFSET_2000);
     }
   }
 
   time_t t = (time_t)unixTs;
   struct tm* tm = gmtime(&t);
-  char datetime[25];
-  snprintf(datetime, sizeof(datetime), "%04d-%02d-%02dT%02d:%02d:%02dZ",
+  char datetime[30];
+  snprintf(datetime, sizeof(datetime), "%04d-%02d-%02dT%02d:%02d:%02d-05:00",
            tm->tm_year + 1900, tm->tm_mon + 1, tm->tm_mday,
            tm->tm_hour, tm->tm_min, tm->tm_sec);
 

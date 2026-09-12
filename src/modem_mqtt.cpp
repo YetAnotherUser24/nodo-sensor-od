@@ -23,6 +23,7 @@
 
 #include "config.h"
 #include "log.h"
+#include "rtc_utils.h"
 
 #define SerialMon Serial
 #define SerialAT Serial1
@@ -380,11 +381,10 @@ void processQueuedRpcCommands() {
       int second = atoi(cmd.substring(19, 21).c_str());
 
       RtcDateTime newDt(year, month, day, hour, minute, second);
-      rtc.SetDateTime(newDt);
+      setRtcDateTime(newDt);
 
 #ifdef DEBUG
       Log("New date: ");
-      rtcNow = rtc.GetDateTime();
       formatDateTime(rtcNow);
       Logln(dateStr);
 #endif

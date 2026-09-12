@@ -115,6 +115,18 @@ static int16_t odReadAll(int16_t* values) {
     }
   }
 
+  #ifdef TEST
+  // Just trying out the sensor with random values
+  int random = rand() % 10; //random from 0 to 10
+  values[0] = static_cast<int16_t>(roundf((25 + (random) )* 100.0f));
+  values[1] = static_cast<int16_t>(roundf((75 + (random) ) * 10.0f));
+  values[2] = static_cast<int16_t>(roundf((7.5 + (random) )* 1000.0f));
+  values[3] = static_cast<int16_t>(roundf((7.5 + (random) )* 100.0f));
+  values[4] = static_cast<int16_t>(roundf((5 + (random) )* 100.0f));
+  
+  return 0;
+  #endif
+  
   if (!triggered) {
 #ifdef DEBUG
     Logf("[OD][ERR] Trigger measurement failed: %s\n", lastWriteRes.error);

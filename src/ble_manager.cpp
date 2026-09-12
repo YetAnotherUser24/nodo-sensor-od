@@ -10,6 +10,8 @@
 
 #include "ble_manager.h"
 
+#if !defined(DISABLE_BLE)
+
 /* ------------------------------ Includes ------------------------------ */
 #include <BLE2902.h>
 #include <BLEDevice.h>
@@ -423,3 +425,30 @@ void Logf(const char* fmt, ...) {
     bleNotifyIfStreaming(buf);
   }
 }
+
+#else
+
+#include <Arduino.h>
+#include <stdarg.h>
+#include <stdio.h>
+
+void Log(const char* s) {
+  Serial.print(s);
+}
+
+void Logln(const char* s) {
+  Serial.println(s);
+}
+
+void Logf(const char* fmt, ...) {
+  char buf[256];
+  va_list args;
+  va_start(args, fmt);
+  int len = vsnprintf(buf, sizeof(buf), fmt, args);
+  va_end(args);
+  if (len > 0) {
+    Serial.print(buf);
+  }
+}
+
+#endif // DISABLE_BLE

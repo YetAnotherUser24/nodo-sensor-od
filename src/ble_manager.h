@@ -13,6 +13,26 @@
 #include "log.h"
 #include <Arduino.h>
 
+#if defined(DISABLE_BLE)
+
+extern bool bleDeviceConnected;
+#define bleStreamingActive false
+#define bleRealtimeSendActive false
+#define bleRestartAdvertisingRequested false
+#define bleWasEverConnected false
+#define bleMonitorIntervalMs 5000
+
+class BLECharacteristic;
+#define pNotifyCharacteristic nullptr
+
+static inline void startBLE() {}
+static inline bool isBleNotifyEnabled() { return false; }
+static inline void stopBLE() {}
+static inline void bleProcessLedBlinks() {}
+static inline void processCommand(const String&) {}
+
+#else
+
 /** Indicates if a BLE client is currently connected. */
 extern bool bleDeviceConnected;
 
@@ -63,16 +83,7 @@ void bleProcessLedBlinks();
 
 /**
  * @brief Processes a command received via BLE characteristic.
- *
- * Commands include:
- *  - T-<measure>-<ble>-<gprs> : Update module timing configuration.
- *  - D-YYYY-MM-DD-HH-MM-SS   : Set RTC date and time.
- *  - START / STOP             : Enable/disable Serial-to-BLE streaming.
- *  - CLEAR_EEPROM / CLEAR / C : Clear external I2C EEPROM storage contents.
- *  - PEEK                     : Print compact 1-line overview for all active EEPROM pages.
- *  - PEEK-<page>              : Print detailed record view for a specific EEPROM page index.
- *  - DATA                     : Reserved.
- *
- * @param cmd Command string received over BLE.
  */
 void processCommand(const String& cmd);
+
+#endif // DISABLE_BLE

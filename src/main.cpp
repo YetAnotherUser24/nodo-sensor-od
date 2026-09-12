@@ -367,10 +367,7 @@ void setup() {
   for (byte address = 1; address < 127; address++) {
     Wire.beginTransmission(address);
     if (Wire.endTransmission() == 0) {
-      Log("Found I2C device at 0x");
-      if (address < 16)
-        Log("0");
-      Logln(String(address, HEX).c_str());
+      Logf("Found I2C device at 0x%02X\n", address);
     }
   }
 #endif
@@ -533,11 +530,8 @@ void setup() {
         failedTransmissionCount++;
 
 #ifdef DEBUG
-        Log("WiFi unavailable. Data remains in offline storage. (Failure ");
-        Log(String(failedTransmissionCount).c_str());
-        Log("/");
-        Log(String(MAX_FAILED_TRANSMISSIONS).c_str());
-        Logln(")");
+        Logf("WiFi unavailable. Data remains in offline storage. (Failure %u/%u)\n",
+             failedTransmissionCount, MAX_FAILED_TRANSMISSIONS);
 #endif
 
         if (failedTransmissionCount >= MAX_FAILED_TRANSMISSIONS) {
@@ -611,11 +605,8 @@ void setup() {
       failedTransmissionCount++;
 
 #ifdef DEBUG
-      Log("WiFi unavailable on first run. Data saved to offline storage. (Failure ");
-      Log(String(failedTransmissionCount).c_str());
-      Log("/");
-      Log(String(MAX_FAILED_TRANSMISSIONS).c_str());
-      Logln(")");
+      Logf("WiFi unavailable on first run. Data saved to offline storage. (Failure %u/%u)\n",
+           failedTransmissionCount, MAX_FAILED_TRANSMISSIONS);
 #endif
     }
 

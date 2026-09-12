@@ -130,10 +130,7 @@ void prepareForDeepSleep(int minutes) {
 #endif
 
 #ifdef DEBUG
-  Logln("");
-  Log("WAKE UP IN ");
-  Log(String(moduleCfg.measure_time).c_str());
-  Logln(" MIN");
+  Logf("\nWAKE UP IN %d MIN\n", moduleCfg.measure_time);
 #endif
 
   // Ensure wakeup pin is input (RTC EXT1 handles it during deep sleep,

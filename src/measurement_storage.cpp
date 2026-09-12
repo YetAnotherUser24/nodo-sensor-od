@@ -342,33 +342,21 @@ void takeMeasurement() {
 #endif
 
 #ifdef DEBUG
-  Logln("========== MEASUREMENT TAKEN ==========");
-  Log("   Timestamp: ");
-  Log(String(secondsSince2000).c_str());
-  Log(" (");
   formatDateTime(rtcNow);
-  Log(dateStr);
-  Log(" ");
-  Log(LOCAL_TZ_NAME);
-  Logln(")");
+  Logf("========== MEASUREMENT TAKEN ==========\n");
+  Logf("   Timestamp: %lu (%s %s)\n", (unsigned long)secondsSince2000, dateStr, LOCAL_TZ_NAME);
 #if defined(SENSOR_BATTERY_ADC) || defined(SENSOR_INA226)
-  Log("   Battery: ");
-  Log(String(telemetryPayload.battery).c_str());
-  Logln(" mV");
+  Logf("   Battery: %u mV\n", telemetryPayload.battery);
 #endif
-  Log("   Temperature: ");
-  Log(String(tempCenti / 100.0, 2).c_str());
-  Logln(" C");
-  Log("   Sensor Readings: [");
-  for (int i = 0; i < MAX_SENSOR_READINGS; i++) {
-    Log(String(telemetryPayload.sensorReadings[i]).c_str());
-    if (i < MAX_SENSOR_READINGS - 1)
-      Log(", ");
-  }
-  Logln("]");
-  Log("   Status: 0x");
-  Logln(String(telemetryPayload.status, HEX).c_str());
-  Logln("==========================================");
+  Logf("   Temperature: %.2f C\n", tempCenti / 100.0f);
+  Logf("   Sensor Readings: [%d, %d, %d, %d, %d]\n",
+       telemetryPayload.sensorReadings[0],
+       telemetryPayload.sensorReadings[1],
+       telemetryPayload.sensorReadings[2],
+       telemetryPayload.sensorReadings[3],
+       telemetryPayload.sensorReadings[4]);
+  Logf("   Status: 0x%08X\n", (unsigned int)telemetryPayload.status);
+  Logf("==========================================\n");
 #endif
 
   /* EEPROM storage only if external I2C EEPROM hardware is present */

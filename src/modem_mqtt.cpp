@@ -441,12 +441,10 @@ bool publishJsonLineToTB(const String& jsonOut) {
 #ifdef DEBUG
   if (ok) {
     Logln("   Published successfully (queued)");
-    Log("   MQTT State: ");
-    Logln(String(mqtt.state()).c_str());
+    Logf("   MQTT State: %d\n", mqtt.state());
   } else {
     Logln("   Publish failed");
-    Log("   MQTT State: ");
-    Logln(String(mqtt.state()).c_str());
+    Logf("   MQTT State: %d\n", mqtt.state());
   }
 #endif
 

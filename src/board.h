@@ -372,3 +372,18 @@ inline void boardInit() {
 #endif
   setPinInactive(I2C_EN_PIN, I2C_EN_ACTIVE_HIGH);
 }
+
+/**
+ * @brief LED pattern signaling entry into IDLE state (3 quick pulses).
+ */
+inline void ledSignalIdle() {
+#if defined(LED_PIN) && (LED_PIN != -1)
+  pinMode(LED_PIN, OUTPUT);
+  for (int i = 0; i < 3; i++) {
+    digitalWrite(LED_PIN, HIGH);
+    delay(100);
+    digitalWrite(LED_PIN, LOW);
+    if (i < 2) delay(100);
+  }
+#endif
+}

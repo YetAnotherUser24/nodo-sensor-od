@@ -661,6 +661,7 @@ void setup() {
   experimentActive = false;
   oledShowMonitorStop();
   stopPrimarySensorRealtime();
+  ledSignalIdle();
   Logln("[MASTER] Web Dashboard Master Control ready. Device in IDLE (waiting for command)...");
 #endif
 }
@@ -759,6 +760,7 @@ void loop() {
     if (wasActive) {
       wasActive = false;
       stopPrimarySensorRealtime();
+      ledSignalIdle();
     }
   }
 

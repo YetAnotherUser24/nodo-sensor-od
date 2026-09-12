@@ -141,22 +141,41 @@ void setSensorCommandCallback(SensorCommandCallback cb) {
 }
 
 static void processTelemetryResponse(const String& response) {
-  if (response.indexOf("\"has_command\":true") == -1) {
-    return; // Fast-path: no command piggybacked
+  if (response.indexOf("has_command") == -1 && response.indexOf("command") == -1) {
+    return; // Fast-path: neither has_command nor command present
   }
 
-  StaticJsonDocument<512> doc;
+  JsonDocument doc;
   DeserializationError err = deserializeJson(doc, response);
   if (err) {
     Logf("[CMD] Response JSON parse error: %s\n", err.c_str());
     return;
   }
 
-  if (doc["has_command"].as<bool>()) {
-    JsonObject pending = doc.containsKey("pending_command") ? doc["pending_command"] : doc["command"];
-    const char* cmdId = pending["id"];
+  bool hasCommand = doc["has_command"].as<bool>() || 
+                    !doc["command"].isNull() || 
+                    !doc["pending_command"].isNull();
+
+  if (hasCommand) {
+    JsonObject pending = !doc["pending_command"].isNull() 
+                           ? doc["pending_command"].as<JsonObject>() 
+                           : doc["command"].as<JsonObject>();
+    if (pending.isNull()) {
+      return;
+    }
+
+    const char* cmdId = pending["id"] | pending["command_id"] | "";
     const char* cmdType = pending["command_type"] | "";
-    JsonObject payload = pending["payload"];
+    
+    JsonObject payload;
+    JsonDocument fallbackPayloadDoc;
+    if (pending["payload"].is<JsonObject>()) {
+      payload = pending["payload"].as<JsonObject>();
+    } else if (pending["payload"].is<const char*>()) {
+      deserializeJson(fallbackPayloadDoc, pending["payload"].as<const char*>());
+      payload = fallbackPayloadDoc.as<JsonObject>();
+    }
+
     const char* action = payload["action"] | "";
 
     String effectiveAction = action;
@@ -166,7 +185,7 @@ static void processTelemetryResponse(const String& response) {
       else effectiveAction = cmdType;
     }
 
-    if (!payload.containsKey("interval_sec") && effectiveAction == "start_monitor") {
+    if (!payload["interval_sec"].is<int>() && effectiveAction == "start_monitor") {
       payload["interval_sec"] = 5;
     }
 
@@ -188,10 +207,10 @@ bool acknowledgeSensorCommand(const char* cmdId, bool success, const char* senso
 
   String ackUrl = String("https://") + AQUACONTROL_HOST + "/api/commands/" + cmdId + "/acknowledge";
 
-  StaticJsonDocument<512> ackDoc;
+  JsonDocument ackDoc;
   ackDoc["success"] = success;
   if (sensorStateJson && strlen(sensorStateJson) > 0) {
-    StaticJsonDocument<256> stateDoc;
+    JsonDocument stateDoc;
     if (deserializeJson(stateDoc, sensorStateJson) == DeserializationError::Ok) {
       ackDoc["sensor_state"] = stateDoc.as<JsonObject>();
     }
@@ -288,7 +307,7 @@ bool publishToAquaControl(uint32_t seconds2000, int16_t* readings,
 
 
   // Build JSON matching /api/telemetry/sensor expected format
-  StaticJsonDocument<384> doc;
+  JsonDocument doc;
   doc["datetime"]          = datetime;
   doc["seconds_since_2000"] = seconds2000;
   doc["water_temp_centi"]  = readings[0];

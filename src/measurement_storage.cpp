@@ -920,3 +920,89 @@ bool processCsvFile(const char* filename) {
   return true;
 #endif
 }
+
+/* --------------------------------------------------------------------------
+ *  Experiment File Lifecycle (startExperimentFile, logExperimentRow, stopExperimentFile)
+ * -------------------------------------------------------------------------- */
+
+#ifdef SD_MODULE
+static SdFile s_expFile;
+static bool s_expFileOpen = false;
+
+bool startExperimentFile(const char* filename) {
+  if (s_expFileOpen) {
+    s_expFile.flush();
+    s_expFile.close();
+    s_expFileOpen = false;
+  }
+
+#if defined(SD_EN_PIN) && SD_EN_PIN != -1
+  setPinActive(SD_EN_PIN, SD_EN_ACTIVE_HIGH);
+  delay(10);
+#endif
+
+  if (!SD.begin(SdSpiConfig(SD_PIN_CS, SHARED_SPI, SD_SCK_MHZ(20), &sdSPI))) {
+    Logln("[EXP] SD.begin failed for experiment file");
+    return false;
+  }
+
+  char cleanPath[24];
+  if (filename[0] == '/') {
+    strncpy(cleanPath, filename, sizeof(cleanPath) - 1);
+  } else {
+    snprintf(cleanPath, sizeof(cleanPath), "/%s", filename);
+  }
+  cleanPath[sizeof(cleanPath) - 1] = '\0';
+
+  bool exists = SD.exists(cleanPath);
+  if (!s_expFile.open(cleanPath, O_RDWR | O_CREAT | O_AT_END)) {
+    Logf("[EXP] Failed to open experiment file: %s\n", cleanPath);
+    return false;
+  }
+
+  s_expFileOpen = true;
+
+  // If new or empty file, write RFC 4180 CSV header
+  if (!exists || s_expFile.fileSize() == 0) {
+    s_expFile.println(F("Timestamp,RTC_Sec,DO_mg_L,Sat_Pct,Temp_C,Batt_V"));
+    s_expFile.flush();
+  }
+
+  Logf("[EXP] Started experiment file: %s (size: %lu bytes)\n", cleanPath, (unsigned long)s_expFile.fileSize());
+  return true;
+}
+
+void logExperimentRow(uint32_t sec2000, int16_t* readings, int16_t rtcTempCenti, uint16_t battMv) {
+  if (!s_expFileOpen) return;
+
+  uint64_t unixTs = (uint64_t)sec2000 + UNIX_OFFSET_2000;
+  time_t t = (time_t)unixTs;
+  struct tm* tm = gmtime(&t);
+  char isoBuf[32];
+  snprintf(isoBuf, sizeof(isoBuf), "%04d-%02d-%02dT%02d:%02d:%02d-05:00",
+           tm->tm_year + 1900, tm->tm_mon + 1, tm->tm_mday,
+           tm->tm_hour, tm->tm_min, tm->tm_sec);
+
+  float doVal = readings[2] / 1000.0f;
+  float satVal = readings[1] / 10.0f;
+  float tempVal = readings[0] / 100.0f;
+  float battV = battMv / 1000.0f;
+
+  s_expFile.printf("%s,%lu,%.3f,%.2f,%.2f,%.2f\r\n",
+                   isoBuf, (unsigned long)sec2000, doVal, satVal, tempVal, battV);
+  s_expFile.flush(); // Flush each row immediately to prevent data loss
+}
+
+void stopExperimentFile() {
+  if (s_expFileOpen) {
+    s_expFile.flush();
+    s_expFile.close();
+    s_expFileOpen = false;
+    Logln("[EXP] Experiment file closed.");
+  }
+}
+
+bool isExperimentFileOpen() {
+  return s_expFileOpen;
+}
+#endif

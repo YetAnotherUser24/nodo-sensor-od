@@ -114,3 +114,34 @@ bool csvLineParse(const String& line, uint32_t& outSeconds2000,
  * @return true if file still has pending lines, false if fully cleared.
  */
 bool processCsvFile(const char* filename);
+
+#ifdef SD_MODULE
+/**
+ * @brief Opens or creates a dedicated experiment CSV file (e.g. /EXP_01.CSV) on SD.
+ * Writes RFC 4180 header if file is newly created or empty.
+ * @param filename 8.3 FAT filename.
+ * @return True if file opened successfully.
+ */
+bool startExperimentFile(const char* filename);
+
+/**
+ * @brief Appends a single measurement row into the active experiment CSV file.
+ * Flushes to disk immediately to prevent data loss on power cuts.
+ */
+void logExperimentRow(uint32_t sec2000, int16_t* readings, int16_t rtcTempCenti, uint16_t battMv);
+
+/**
+ * @brief Flushes and closes the active experiment CSV file.
+ */
+void stopExperimentFile();
+
+/**
+ * @brief Checks if an experiment CSV file is currently open.
+ */
+bool isExperimentFileOpen();
+#else
+static inline bool startExperimentFile(const char*) { return false; }
+static inline void logExperimentRow(uint32_t, int16_t*, int16_t, uint16_t) {}
+static inline void stopExperimentFile() {}
+static inline bool isExperimentFileOpen() { return false; }
+#endif

@@ -38,6 +38,7 @@
 #include <esp_bt.h>
 #include <esp_task_wdt.h>
 #include <string.h>
+#include <ArduinoJson.h>
 
 #ifdef GPRS_MODULE
 #include <WiFi.h>
@@ -47,10 +48,12 @@
 
 /* ------------------------- BLE Includes ---------------------------- */
 
+#if !defined(DISABLE_BLE)
 #include <BLE2902.h>
 #include <BLEDevice.h>
 #include <BLEServer.h>
 #include <BLEUtils.h>
+#endif
 
 /* ------------------------- Conditional Includes -------------------- */
 
@@ -170,6 +173,7 @@ TelemetryPayload telemetryPayload;
 
 /* ------------------------- BLE Globals ----------------------------- */
 
+#if !defined(DISABLE_BLE)
 bool bleActive = false;
 unsigned long bleStartTime = 0;
 bool commandMode = false;
@@ -177,6 +181,150 @@ unsigned long commandStart = 0;
 
 BLEServer* pServer = nullptr;
 BLECharacteristic* pCharacteristic = nullptr;
+#endif
+
+/* -------------------- Experiment & Web Monitor --------------------- */
+
+bool experimentActive = false;
+uint32_t experimentIntervalMs = 2000;
+char activeExperimentId[40] = {0};
+char activeExperimentName[48] = {0};
+char activeExperimentFilename[16] = "EXP_01.CSV";
+
+bool webMonitorActive = false;
+uint32_t webMonitorIntervalMs = 5000;
+bool manualSampleRequested = false;
+
+#ifdef WIFI_MODULE
+void onSensorCommandReceived(const char* cmdId, const char* action, const char* payloadJson) {
+  StaticJsonDocument<384> pDoc;
+  DeserializationError err = deserializeJson(pDoc, payloadJson);
+  if (err) {
+    Logf("[CMD] Payload parse warning: %s\n", err.c_str());
+  }
+
+  Logf("[CMD] Dispatching: %s (ID: %s)\n", action, cmdId ? cmdId : "none");
+
+  bool success = true;
+  StaticJsonDocument<256> stateDoc;
+
+  if (strcmp(action, "start_experiment") == 0) {
+    const char* expId = pDoc["experiment_id"] | "exp_default";
+    const char* expName = pDoc["name"] | "Experimento";
+    const char* fname = pDoc["csv_filename"] | "EXP_01.CSV";
+    int intervalSec = pDoc["interval_sec"] | 2;
+    if (intervalSec < 1) intervalSec = 1;
+    if (intervalSec > 60) intervalSec = 60;
+
+    strncpy(activeExperimentId, expId, sizeof(activeExperimentId) - 1);
+    strncpy(activeExperimentName, expName, sizeof(activeExperimentName) - 1);
+    strncpy(activeExperimentFilename, fname, sizeof(activeExperimentFilename) - 1);
+
+    experimentIntervalMs = intervalSec * 1000UL;
+    experimentActive = true;
+    webMonitorActive = true;
+
+#ifdef SD_MODULE
+    startExperimentFile(activeExperimentFilename);
+#endif
+    oledShowMonitorStart(intervalSec);
+
+    stateDoc["monitor_active"] = true;
+    stateDoc["monitor_interval_sec"] = intervalSec;
+    JsonObject expObj = stateDoc["active_experiment"].to<JsonObject>();
+    expObj["id"] = activeExperimentId;
+    expObj["name"] = activeExperimentName;
+    expObj["sampling_rate_sec"] = intervalSec;
+    expObj["csv_filename"] = activeExperimentFilename;
+    expObj["status"] = "active";
+
+  } else if (strcmp(action, "stop_experiment") == 0) {
+    experimentActive = false;
+    webMonitorActive = false;
+#ifdef SD_MODULE
+    stopExperimentFile();
+#endif
+    oledShowMonitorStop();
+
+    stateDoc["monitor_active"] = false;
+    stateDoc["active_experiment"] = nullptr;
+
+  } else if (strcmp(action, "start_monitor") == 0 || strcmp(action, "start") == 0) {
+    int intervalSec = pDoc["interval_sec"] | 5;
+    if (intervalSec < 1) intervalSec = 1;
+    if (intervalSec > 60) intervalSec = 60;
+
+    webMonitorIntervalMs = intervalSec * 1000UL;
+    webMonitorActive = true;
+    oledShowMonitorStart(intervalSec);
+
+    stateDoc["monitor_active"] = true;
+    stateDoc["monitor_interval_sec"] = intervalSec;
+
+  } else if (strcmp(action, "stop_monitor") == 0 || strcmp(action, "stop") == 0) {
+    webMonitorActive = false;
+    if (experimentActive) {
+      experimentActive = false;
+#ifdef SD_MODULE
+      stopExperimentFile();
+#endif
+    }
+    oledShowMonitorStop();
+
+    stateDoc["monitor_active"] = false;
+    stateDoc["active_experiment"] = nullptr;
+
+  } else if (strcmp(action, "set_sampling_rate") == 0) {
+    int intervalSec = pDoc["interval_sec"] | 5;
+    if (intervalSec < 1) intervalSec = 1;
+    if (intervalSec > 60) intervalSec = 60;
+
+    webMonitorIntervalMs = intervalSec * 1000UL;
+    if (experimentActive) {
+      experimentIntervalMs = intervalSec * 1000UL;
+    }
+    stateDoc["monitor_interval_sec"] = intervalSec;
+
+  } else if (strcmp(action, "manual_sample") == 0) {
+    manualSampleRequested = true;
+    Logln("[CMD] Manual sample queued for execution in loop().");
+    stateDoc["manual_sample"] = "queued";
+
+  } else if (strcmp(action, "set_sleep_cycle") == 0) {
+    int cycleMin = pDoc["measure_time_min"] | 15;
+    if (cycleMin >= 1 && cycleMin <= 1440) {
+      moduleCfg.measure_time = cycleMin;
+      EEPROM.begin(sizeof(ModuleConfig));
+      EEPROM.put(0, moduleCfg);
+      EEPROM.commit();
+      EEPROM.end();
+      Logf("[CONFIG] Sleep cycle updated to %d min\n", cycleMin);
+    }
+    stateDoc["sleep_cycle_min"] = moduleCfg.measure_time;
+
+  } else if (strcmp(action, "sleep") == 0) {
+    int sleepMin = pDoc["minutes"] | 30;
+    bool indefinite = pDoc["indefinite"] | false;
+    Logf("[PWR] Sleep command: %d min (indefinite: %d)\n", sleepMin, indefinite ? 1 : 0);
+
+    stateDoc["monitor_active"] = false;
+    String stateStr;
+    serializeJson(stateDoc, stateStr);
+    acknowledgeSensorCommand(cmdId, true, stateStr.c_str());
+
+    if (indefinite) {
+      prepareForDeepSleep(0);
+    } else {
+      prepareForDeepSleep(sleepMin);
+    }
+    return;
+  }
+
+  String stateStr;
+  serializeJson(stateDoc, stateStr);
+  acknowledgeSensorCommand(cmdId, success, stateStr.c_str());
+}
+#endif
 
 /* ---------------------------------------------------------------- */
 /*                           HELPERS                                */
@@ -246,6 +394,8 @@ void setup() {
   rtcNow = getRtcDateTime();
 
 #ifdef WIFI_MODULE
+  setSensorCommandCallback(onSensorCommandReceived);
+
   // If time is not calibrated (year < 2020), synchronize via WiFi NTP
   if (rtcNow.Year() < 2020) {
     Logln("RTC time uncalibrated. Attempting initial WiFi NTP sync...");
@@ -339,6 +489,7 @@ void setup() {
       Logln("MT TIME...");
     }
 
+#if !defined(DISABLE_BLE) && !defined(WEB_MASTER_MODE)
     /* Bluetooth window — forced ON if streaming is active */
     if (moduleCfg.bluetooth_time > 0 && (rtcNow.Minute() % moduleCfg.bluetooth_time == 0)) {
 #ifdef DEBUG
@@ -354,6 +505,7 @@ void setup() {
       esp_task_wdt_reset();
       startBLE();
     }
+#endif
 
 #ifdef WIFI_MODULE
     if (moduleCfg.GPRS_time > 0 && (rtcNow.Minute() % moduleCfg.GPRS_time == 0)) {
@@ -403,6 +555,8 @@ void setup() {
   } else {
     // First boot after power-on/reset
     firstRun = true;
+
+#if !defined(WEB_MASTER_MODE)
 #ifdef SD_MODULE
     if (isEepromAvailable()) {
 #ifdef DEBUG
@@ -467,11 +621,23 @@ void setup() {
 
     gprsDone = true;
 #endif /* WIFI_MODULE */
+
+#else // WEB_MASTER_MODE
+    Logln("[MASTER] Web Master Mode: Skipping offline EEPROM flush & initial forced sample.");
+#ifdef WIFI_MODULE
+    wifiAvailable = wifiConnect();
+    esp_task_wdt_reset();
+    if (wifiAvailable) {
+      syncTimeNtp(5000);
+    }
+    gprsDone = true;
+#endif
+#endif
   }
 
 #ifdef WIFI_MODULE
-#if !defined(SENSOR_VIRTUAL)
-  if (gprsDone) {
+#if !defined(SENSOR_VIRTUAL) && !defined(WEB_MASTER_MODE)
+  if (gprsDone && !experimentActive && !webMonitorActive) {
     wifiDisconnect();
     esp_task_wdt_reset();
   }
@@ -490,10 +656,19 @@ void setup() {
   }
 #endif
 
-  if (firstRun) {
+#if !defined(DISABLE_BLE) && !defined(WEB_MASTER_MODE)
+  if (firstRun && !experimentActive && !webMonitorActive) {
     esp_task_wdt_reset();
     startBLE();
   }
+#endif
+
+#if defined(WEB_MASTER_MODE)
+  webMonitorActive = false;
+  experimentActive = false;
+  oledShowMonitorStop();
+  Logln("[MASTER] Web Dashboard Master Control ready. Device in IDLE (waiting for command)...");
+#endif
 }
 
 /* =============================== Loop ============================== */
@@ -503,6 +678,8 @@ void setup() {
  */
 void loop() {
   esp_task_wdt_reset();
+
+#if !defined(DISABLE_BLE)
   bleProcessLedBlinks();
 
   if (bleRestartAdvertisingRequested && bleActive && pServer != nullptr) {
@@ -510,6 +687,98 @@ void loop() {
     Logln("Restarting BLE advertising...");
     pServer->getAdvertising()->start();
   }
+#endif
+
+#ifdef WIFI_MODULE
+  if (manualSampleRequested) {
+    manualSampleRequested = false;
+    Logln("[MASTER] Executing queued manual sample...");
+    takeMeasurement();
+    if (WiFi.status() == WL_CONNECTED) {
+      publishToAquaControl(rtcNow.TotalSeconds(), telemetryPayload.sensorReadings,
+                           telemetryPayload.temperature, telemetryPayload.status);
+    }
+  }
+#endif
+
+  /* Real-time loop for Active Experiment or Web Monitor */
+  static bool wasActive = false;
+
+  if (experimentActive || webMonitorActive) {
+    uint32_t activeInterval = experimentActive ? experimentIntervalMs : webMonitorIntervalMs;
+    static unsigned long lastActiveSample = 0;
+
+    if (!wasActive) {
+      wasActive = true;
+      lastActiveSample = 0; // Trigger measurement immediately upon activation
+    }
+
+    if (millis() - lastActiveSample >= activeInterval) {
+      lastActiveSample = millis();
+
+      // 1. Sample sensor, RTC, battery & broadcast ESP-NOW to ODrive
+      takeMeasurement();
+
+      // 2. Log to dedicated experiment CSV file on SD card
+#ifdef SD_MODULE
+      if (experimentActive) {
+        logExperimentRow(rtcNow.TotalSeconds(), telemetryPayload.sensorReadings,
+                         telemetryPayload.temperature, (uint16_t)telemetryPayload.battery);
+      }
+#endif
+
+      // 3. Update OLED display
+      oledUpdateMonitor(telemetryPayload, rtcNow, activeInterval / 1000);
+
+      // 4. Stream to AquaControl dashboard via WiFi HTTPS
+#ifdef WIFI_MODULE
+      if (WiFi.status() != WL_CONNECTED) {
+        wifiConnect();
+      }
+      if (WiFi.status() == WL_CONNECTED) {
+        publishToAquaControl(rtcNow.TotalSeconds(), telemetryPayload.sensorReadings,
+                             telemetryPayload.temperature, telemetryPayload.status);
+      }
+#endif
+
+#if !defined(DISABLE_BLE)
+      // 5. Stream to BLE characteristic if client connected
+      if (bleDeviceConnected && pServer != nullptr) {
+        int16_t primaryReading = telemetryPayload.sensorReadings[2];
+        static char readingBuf[16];
+        itoa(primaryReading, readingBuf, 10);
+        if (pNotifyCharacteristic != nullptr) {
+          pNotifyCharacteristic->setValue((const char*)readingBuf);
+          pNotifyCharacteristic->notify();
+        }
+        if (pCharacteristic != nullptr) {
+          pCharacteristic->setValue((const char*)readingBuf);
+          pCharacteristic->notify();
+        }
+      }
+#endif
+    }
+
+    delay(20);
+    return; // Do not enter deep sleep while experiment or web monitor is active
+  } else {
+    wasActive = false;
+  }
+
+#if defined(WEB_MASTER_MODE)
+  // In Web Master Mode, if no command is active, stay IDLE and poll for commands every 2 seconds
+  static unsigned long lastIdlePoll = 0;
+  if (millis() - lastIdlePoll >= 2000) {
+    lastIdlePoll = millis();
+#ifdef WIFI_MODULE
+    if (WiFi.status() == WL_CONNECTED) {
+      pollPendingCommands();
+    }
+#endif
+  }
+  delay(50);
+  return;
+#endif
 
 #if defined(SENSOR_VIRTUAL)
   /* Continuous streaming loop for virtual dashboard test (sends every 5 seconds) */
@@ -531,6 +800,7 @@ void loop() {
 
     oledUpdateMonitor(telemetryPayload, rtcNow, 5);
 
+#if !defined(DISABLE_BLE)
     if (bleDeviceConnected && pServer != nullptr) {
       int16_t primaryReading = telemetryPayload.sensorReadings[1];
       static char readingBuf[16];
@@ -544,12 +814,14 @@ void loop() {
         pCharacteristic->notify();
       }
     }
+#endif
   }
 
   delay(50);
   return;
 #endif
 
+#if !defined(DISABLE_BLE) && !defined(WEB_MASTER_MODE)
   if (bleActive) {
     static unsigned long lastBleReport = 0;
     static bool wasStreaming = false;
@@ -622,6 +894,10 @@ void loop() {
     stopPrimarySensorRealtime();
     prepareForDeepSleep(moduleCfg.measure_time);
   }
+#elif !defined(WEB_MASTER_MODE)
+  stopPrimarySensorRealtime();
+  prepareForDeepSleep(moduleCfg.measure_time);
+#endif
 
   delay(50);
 }

@@ -293,7 +293,6 @@ bool publishToAquaControl(uint32_t seconds2000, int16_t* readings,
   doc["seconds_since_2000"] = seconds2000;
   doc["water_temp_centi"]  = readings[0];
   doc["do_sat_deci_pct"]   = readings[1];
-  doc["do_centi_mg_l"]     = readings[2] / 10;
   doc["do_milli_mg_l"]     = readings[2];
   doc["param3_centi"]      = readings[3];
   doc["param4_centi"]      = readings[4];

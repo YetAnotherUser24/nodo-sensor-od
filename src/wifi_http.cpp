@@ -145,7 +145,7 @@ static void processTelemetryResponse(const String& response) {
     return; // Fast-path: neither has_command nor command present
   }
 
-  JsonDocument doc;
+  StaticJsonDocument<1536> doc;
   DeserializationError err = deserializeJson(doc, response);
   if (err) {
     Logf("[CMD] Response JSON parse error: %s\n", err.c_str());
@@ -168,7 +168,7 @@ static void processTelemetryResponse(const String& response) {
     const char* cmdType = pending["command_type"] | "";
     
     JsonObject payload;
-    JsonDocument fallbackPayloadDoc;
+    StaticJsonDocument<384> fallbackPayloadDoc;
     if (pending["payload"].is<JsonObject>()) {
       payload = pending["payload"].as<JsonObject>();
     } else if (pending["payload"].is<const char*>()) {
@@ -207,10 +207,10 @@ bool acknowledgeSensorCommand(const char* cmdId, bool success, const char* senso
 
   String ackUrl = String("https://") + AQUACONTROL_HOST + "/api/commands/" + cmdId + "/acknowledge";
 
-  JsonDocument ackDoc;
+  StaticJsonDocument<512> ackDoc;
   ackDoc["success"] = success;
   if (sensorStateJson && strlen(sensorStateJson) > 0) {
-    JsonDocument stateDoc;
+    StaticJsonDocument<256> stateDoc;
     if (deserializeJson(stateDoc, sensorStateJson) == DeserializationError::Ok) {
       ackDoc["sensor_state"] = stateDoc.as<JsonObject>();
     }
@@ -307,7 +307,7 @@ bool publishToAquaControl(uint32_t seconds2000, int16_t* readings,
 
 
   // Build JSON matching /api/telemetry/sensor expected format
-  JsonDocument doc;
+  StaticJsonDocument<384> doc;
   doc["datetime"]          = datetime;
   doc["seconds_since_2000"] = seconds2000;
   doc["water_temp_centi"]  = readings[0];

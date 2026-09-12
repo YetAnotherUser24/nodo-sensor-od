@@ -197,7 +197,7 @@ bool manualSampleRequested = false;
 
 #ifdef WIFI_MODULE
 void onSensorCommandReceived(const char* cmdId, const char* action, const char* payloadJson) {
-  JsonDocument pDoc;
+  StaticJsonDocument<384> pDoc;
   DeserializationError err = deserializeJson(pDoc, payloadJson);
   if (err) {
     Logf("[CMD] Payload parse warning: %s\n", err.c_str());
@@ -206,7 +206,7 @@ void onSensorCommandReceived(const char* cmdId, const char* action, const char* 
   Logf("[CMD] Dispatching: %s (ID: %s)\n", action, cmdId ? cmdId : "none");
 
   bool success = true;
-  JsonDocument stateDoc;
+  StaticJsonDocument<256> stateDoc;
 
   if (strcmp(action, "start_experiment") == 0) {
     const char* expId = pDoc["experiment_id"] | "exp_default";
@@ -238,9 +238,7 @@ void onSensorCommandReceived(const char* cmdId, const char* action, const char* 
     expObj["csv_filename"] = activeExperimentFilename;
     expObj["status"] = "active";
 
-  } else if (strcasecmp(action, "stop_experiment") == 0 || strcasecmp(action, "stop-experiment") == 0 ||
-             strcasecmp(action, "stop_monitor") == 0 || strcasecmp(action, "stop-monitor") == 0 ||
-             strcasecmp(action, "stop") == 0) {
+  } else if (strcmp(action, "stop_experiment") == 0) {
     experimentActive = false;
     webMonitorActive = false;
 #ifdef SD_MODULE
@@ -263,6 +261,20 @@ void onSensorCommandReceived(const char* cmdId, const char* action, const char* 
 
     stateDoc["monitor_active"] = true;
     stateDoc["monitor_interval_sec"] = intervalSec;
+
+  } else if (strcmp(action, "stop_monitor") == 0 || strcmp(action, "stop") == 0) {
+    webMonitorActive = false;
+    if (experimentActive) {
+      experimentActive = false;
+#ifdef SD_MODULE
+      stopExperimentFile();
+#endif
+    }
+    oledShowMonitorStop();
+    stopPrimarySensorRealtime();
+
+    stateDoc["monitor_active"] = false;
+    stateDoc["active_experiment"] = nullptr;
 
   } else if (strcmp(action, "set_sampling_rate") == 0) {
     int intervalSec = pDoc["interval_sec"] | 5;
@@ -661,19 +673,6 @@ void setup() {
 void loop() {
   esp_task_wdt_reset();
 
-#if defined(WEB_MASTER_MODE)
-  // In Web Master Mode, poll for pending commands every 2 seconds (active or idle)
-  static unsigned long lastCmdPoll = 0;
-  if (millis() - lastCmdPoll >= 2000) {
-    lastCmdPoll = millis();
-#ifdef WIFI_MODULE
-    if (WiFi.status() == WL_CONNECTED) {
-      pollPendingCommands();
-    }
-#endif
-  }
-#endif
-
 #if !defined(DISABLE_BLE)
   bleProcessLedBlinks();
 
@@ -733,9 +732,6 @@ void loop() {
       if (WiFi.status() == WL_CONNECTED) {
         publishToAquaControl(rtcNow.TotalSeconds(), telemetryPayload.sensorReadings,
                              telemetryPayload.temperature, telemetryPayload.status);
-#if defined(WEB_MASTER_MODE)
-        lastCmdPoll = millis(); // Response already checked pending commands
-#endif
       }
 #endif
 
@@ -767,8 +763,18 @@ void loop() {
   }
 
 #if defined(WEB_MASTER_MODE)
+  // In Web Master Mode, if no command is active, stay IDLE and poll for commands every 2 seconds
+  static unsigned long lastIdlePoll = 0;
+  if (millis() - lastIdlePoll >= 2000) {
+    lastIdlePoll = millis();
+#ifdef WIFI_MODULE
+    if (WiFi.status() == WL_CONNECTED) {
+      pollPendingCommands();
+    }
+#endif
+  }
   delay(50);
-  return; // Keep device running in web master mode, do not enter deep sleep
+  return;
 #endif
 
 #if defined(SENSOR_VIRTUAL)

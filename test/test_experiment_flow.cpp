@@ -106,28 +106,19 @@ int main() {
   assert(std::strstr(sampleErrMsgJson, "\"csv_filename\":\"EXP_99.CSV\"") != nullptr);
   std::printf("  ✓ 6. Database error_message JSON fallback payload extraction verified\n");
 
-  // 7. Validate Stop Action Alias Matching
+  // 7. Validate Stop Action Matching (stop_experiment and stop_monitor / stop)
   auto isStopAction = [](const char* act) -> bool {
-#ifdef _WIN32
-    return (stricmp(act, "stop_experiment") == 0 || stricmp(act, "stop-experiment") == 0 ||
-            stricmp(act, "stop_monitor") == 0 || stricmp(act, "stop-monitor") == 0 ||
-            stricmp(act, "stop") == 0);
-#else
-    return (strcasecmp(act, "stop_experiment") == 0 || strcasecmp(act, "stop-experiment") == 0 ||
-            strcasecmp(act, "stop_monitor") == 0 || strcasecmp(act, "stop-monitor") == 0 ||
-            strcasecmp(act, "stop") == 0);
-#endif
+    return (std::strcmp(act, "stop_experiment") == 0 ||
+            std::strcmp(act, "stop_monitor") == 0 ||
+            std::strcmp(act, "stop") == 0);
   };
 
   assert(isStopAction("stop_experiment"));
-  assert(isStopAction("stop-experiment"));
   assert(isStopAction("stop_monitor"));
-  assert(isStopAction("stop-monitor"));
   assert(isStopAction("stop"));
-  assert(isStopAction("STOP"));
   assert(!isStopAction("start_experiment"));
   assert(!isStopAction("start_monitor"));
-  std::printf("  ✓ 7. Stop action alias matching (stop_experiment, stop-experiment, stop_monitor, stop, STOP) verified\n");
+  std::printf("  ✓ 7. Stop action matching (stop_experiment, stop_monitor, stop) verified\n");
 
   std::printf("\n====================================================\n");
   std::printf(" ¡TODAS LAS PRUEBAS DE EXPERIMENTO EN FIRMWARE OK! ✓\n");

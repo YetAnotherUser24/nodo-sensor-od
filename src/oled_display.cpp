@@ -81,6 +81,7 @@ public:
 
   void clearDisplay() {
     memset(_buffer, 0, sizeof(_buffer));
+    setCursor(0, 0);
   }
 
   void display() {
@@ -147,13 +148,26 @@ bool oledInit() {
   setPinActive(I2C_EN_PIN, I2C_EN_ACTIVE_HIGH);
   delay(50); // Allow 3.3V power rail and display controller internal POR to stabilize
 
+  #ifdef DEBUG
+  Logln("\r[OLED] Beginning OLED...");
+  #endif
   // Try primary address 0x3C first, then 0x3D fallback
-  if (oledDisplay.begin(OLED_I2C_ADDR_PRIMARY)) {
-    oledInitialized = true;
-  } else if (oledDisplay.begin(OLED_I2C_ADDR_SECONDARY)) {
-    oledInitialized = true;
-  } else {
-    oledInitialized = false;
+  for (int i = 0; i < 5; i++) {
+    if (oledDisplay.begin(OLED_I2C_ADDR_PRIMARY)) {
+      oledInitialized = true;
+      break;
+    delay(100);
+    } else if (oledDisplay.begin(OLED_I2C_ADDR_SECONDARY)) {
+      oledInitialized = true;
+      break;
+    }
+    delay(100);
+    #ifdef DEBUG
+    Logf(".");
+    #endif
+  }
+
+  if (!oledInitialized) {
 #ifdef DEBUG
     Logln("[OLED] SH1106 display not detected on I2C bus (checked 0x3C, 0x3D).");
 #endif
@@ -201,7 +215,6 @@ void oledShowMonitorStart(uint32_t intervalSec) {
   oledDisplay.printf("Interval: %u s", (unsigned int)intervalSec);
   oledDisplay.setCursor(0, 44);
   oledDisplay.print("Sampling started...");
-  oledDisplay.drawFastHLine(0, 58, OLED_WIDTH, 1);
 
   oledDisplay.display();
 }
@@ -220,6 +233,7 @@ void oledUpdateMonitor(const TelemetryPayload& tp, const RtcDateTime& dt, uint32
   oledDisplay.fillRect(0, 0, OLED_WIDTH, 11, 1);
   oledDisplay.setTextColor(0, 1);
   oledDisplay.setTextSize(1);
+  oledDisplay.setCursor(4, 2);
   oledDisplay.print("MONITOR: OD DIGISENS");
 
   // Measurement readings
@@ -227,7 +241,7 @@ void oledUpdateMonitor(const TelemetryPayload& tp, const RtcDateTime& dt, uint32
 
   // Row 1 (y = 13): Time, BLE status & Interval
   oledDisplay.setCursor(0, 13);
-  oledDisplay.printf("%02u:%02u:%02u %s Int:%us", (unsigned int)dt.Hour(), (unsigned int)dt.Minute(),
+  oledDisplay.printf("%02u:%02u:%02u %s %us", (unsigned int)dt.Hour(), (unsigned int)dt.Minute(),
                     (unsigned int)dt.Second(), bleDeviceConnected ? "[BLE]" : "[ADV]",
                     (unsigned int)intervalSec);
 
@@ -266,19 +280,22 @@ void oledShowMonitorStop() {
   oledDisplay.setTextColor(0, 1);
   oledDisplay.setTextSize(1);
   oledDisplay.setCursor(4, 2);
-  oledDisplay.print("MONITORING STOPPED");
+  oledDisplay.print("STANDBY / IDLE");
 
   oledDisplay.setTextColor(1);
-  oledDisplay.setCursor(0, 24);
+  oledDisplay.setCursor(0, 22);
   oledDisplay.print("Continuous monitoring");
-  oledDisplay.setCursor(0, 36);
-  oledDisplay.print("disabled (STOP).");
-  oledDisplay.setCursor(0, 50);
-  oledDisplay.print("Entering standby/sleep.");
+  oledDisplay.setCursor(0, 34);
+  oledDisplay.print("stopped (IDLE).");
+  oledDisplay.setCursor(0, 48);
+  oledDisplay.print("Waiting for command...");
 
   oledDisplay.display();
+
+#if !defined(WEB_MASTER_MODE)
   delay(1000);
   oledPowerOff();
+#endif
 }
 
 void oledPowerOff() {

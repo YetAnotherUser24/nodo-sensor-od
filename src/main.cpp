@@ -245,6 +245,7 @@ void onSensorCommandReceived(const char* cmdId, const char* action, const char* 
     stopExperimentFile();
 #endif
     oledShowMonitorStop();
+    stopPrimarySensorRealtime();
 
     stateDoc["monitor_active"] = false;
     stateDoc["active_experiment"] = nullptr;
@@ -270,6 +271,7 @@ void onSensorCommandReceived(const char* cmdId, const char* action, const char* 
 #endif
     }
     oledShowMonitorStop();
+    stopPrimarySensorRealtime();
 
     stateDoc["monitor_active"] = false;
     stateDoc["active_experiment"] = nullptr;
@@ -658,6 +660,7 @@ void setup() {
   webMonitorActive = false;
   experimentActive = false;
   oledShowMonitorStop();
+  stopPrimarySensorRealtime();
   Logln("[MASTER] Web Dashboard Master Control ready. Device in IDLE (waiting for command)...");
 #endif
 }
@@ -753,7 +756,10 @@ void loop() {
     delay(20);
     return; // Do not enter deep sleep while experiment or web monitor is active
   } else {
-    wasActive = false;
+    if (wasActive) {
+      wasActive = false;
+      stopPrimarySensorRealtime();
+    }
   }
 
 #if defined(WEB_MASTER_MODE)

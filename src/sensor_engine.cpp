@@ -83,6 +83,17 @@ static inline bool isPlausibleMeasurement(float temperature, float od) {
  * @return 0 on success, -2 on comm failure, -5 on Modbus exception, -6 on invalid data.
  */
 static int16_t odReadAll(int16_t* values) {
+#ifdef TEST
+  // Return test values immediately without Modbus timeout delays
+  int random = rand() % 10; // random from 0 to 10
+  values[0] = static_cast<int16_t>(roundf((25 + (random) )* 100.0f));
+  values[1] = static_cast<int16_t>(roundf((75 + (random) ) * 10.0f));
+  values[2] = static_cast<int16_t>(roundf((7.5 + (random) )* 1000.0f));
+  values[3] = static_cast<int16_t>(roundf((7.5 + (random) )* 100.0f));
+  values[4] = static_cast<int16_t>(roundf((5 + (random) )* 100.0f));
+  return 0;
+#endif
+
   modbus_rtu::ModbusRtu modbus(odSerial);
 
   modbus_rtu::ModbusRtu::Config cfg;
@@ -114,18 +125,6 @@ static int16_t odReadAll(int16_t* values) {
       }
     }
   }
-
-  #ifdef TEST
-  // Just trying out the sensor with random values
-  int random = rand() % 10; //random from 0 to 10
-  values[0] = static_cast<int16_t>(roundf((25 + (random) )* 100.0f));
-  values[1] = static_cast<int16_t>(roundf((75 + (random) ) * 10.0f));
-  values[2] = static_cast<int16_t>(roundf((7.5 + (random) )* 1000.0f));
-  values[3] = static_cast<int16_t>(roundf((7.5 + (random) )* 100.0f));
-  values[4] = static_cast<int16_t>(roundf((5 + (random) )* 100.0f));
-  
-  return 0;
-  #endif
   
   if (!triggered) {
 #ifdef DEBUG
@@ -319,18 +318,28 @@ void stopPrimarySensorRealtime() {
 
 #else // !SENSOR_VIRTUAL
 
+extern bool webMonitorActive;
+extern bool experimentActive;
+static bool s_sensorPowered = false;
+
 void sensorReadAll(TelemetryPayload& tp) {
   uint8_t readingIndex = 0;
+  bool isContinuous = webMonitorActive || experimentActive;
 
   /* ---- 1. Optical Dissolved Oxygen (OD) Sensor (Modbus RTU over RS-485) ---- */
+  if (!s_sensorPowered) {
 #ifdef RS485_EN_PIN
-  setPinActive(RS485_EN_PIN, RS485_EN_ACTIVE_HIGH);
+    setPinActive(RS485_EN_PIN, RS485_EN_ACTIVE_HIGH);
 #endif
-  gpio_hold_dis((gpio_num_t)OD_DE_RE_PIN);
+    gpio_hold_dis((gpio_num_t)OD_DE_RE_PIN);
 
-  // Power on
-  setPinActive(OD_PWR_PIN, OD_PWR_ACTIVE_HIGH);
-  delay(OD_WARMUP_MS);
+    // Initial power-on
+    setPinActive(OD_PWR_PIN, OD_PWR_ACTIVE_HIGH);
+#ifndef TEST
+    delay(OD_WARMUP_MS);
+#endif
+    s_sensorPowered = true;
+  }
 
   // Read samples — reads 10 registers (5 floats)
   uint8_t nread = 0;
@@ -365,20 +374,29 @@ void sensorReadAll(TelemetryPayload& tp) {
     }
   }
 
-  // Power off sensor and bus
-  odSerial.end();
-  safePowerDownSensorPin(OD_PWR_PIN, OD_PWR_ACTIVE_HIGH);
+  // If not in continuous active monitoring or experiment, power off to save battery
+  if (!isContinuous) {
+    odSerial.end();
+    safePowerDownSensorPin(OD_PWR_PIN, OD_PWR_ACTIVE_HIGH);
 #ifdef RS485_EN_PIN
-  safePowerDownSensorPin(RS485_EN_PIN, RS485_EN_ACTIVE_HIGH);
+    safePowerDownSensorPin(RS485_EN_PIN, RS485_EN_ACTIVE_HIGH);
 #endif
+    s_sensorPowered = false;
+  }
 
   /* ---- 2. Battery Monitoring ---- */
 #ifdef SENSOR_BATTERY_ADC
   tp.battery = batteryAdcRead();
   tp.sensorReadings[readingIndex++] = (int16_t)(tp.battery & 0xFFFF);
 #elif defined(SENSOR_INA226)
-  ina226WriteRegister(0x00, 0x4726); // MODE=110 (bus continuous), AVG=64, VBUSCT=1.1ms
-  delay(INA226_WARMUP_MS);
+  static bool ina226Configured = false;
+  if (!ina226Configured) {
+    ina226WriteRegister(0x00, 0x4726); // MODE=110 (bus continuous), AVG=64, VBUSCT=1.1ms
+#ifndef TEST
+    delay(INA226_WARMUP_MS);
+#endif
+    ina226Configured = true;
+  }
   uint32_t mv = ina226ReadBusVoltage();
 #ifdef DEBUG
   Logf("[INA226] Bus voltage: %u mV\n", mv);
@@ -397,17 +415,17 @@ void sensorReadAll(TelemetryPayload& tp) {
  *  Real-Time Sensor Preview Helpers
  * ================================================================== */
 
-static bool realtimeSensorInit = false;
-
 int16_t readPrimarySensorRealtime() {
-  if (!realtimeSensorInit) {
+  if (!s_sensorPowered) {
 #ifdef RS485_EN_PIN
     setPinActive(RS485_EN_PIN, RS485_EN_ACTIVE_HIGH);
 #endif
     gpio_hold_dis((gpio_num_t)OD_DE_RE_PIN);
     setPinActive(OD_PWR_PIN, OD_PWR_ACTIVE_HIGH);
+#ifndef TEST
     delay(OD_WARMUP_MS);
-    realtimeSensorInit = true;
+#endif
+    s_sensorPowered = true;
   }
 
   int16_t values[OD_NUM_READINGS] = {0};
@@ -419,17 +437,14 @@ int16_t readPrimarySensorRealtime() {
 }
 
 void stopPrimarySensorRealtime() {
-  if (!realtimeSensorInit) {
-    return;
-  }
-
-  odSerial.end();
-  safePowerDownSensorPin(OD_PWR_PIN, OD_PWR_ACTIVE_HIGH);
+  if (s_sensorPowered) {
+    odSerial.end();
+    safePowerDownSensorPin(OD_PWR_PIN, OD_PWR_ACTIVE_HIGH);
 #ifdef RS485_EN_PIN
-  safePowerDownSensorPin(RS485_EN_PIN, RS485_EN_ACTIVE_HIGH);
+    safePowerDownSensorPin(RS485_EN_PIN, RS485_EN_ACTIVE_HIGH);
 #endif
-
-  realtimeSensorInit = false;
+    s_sensorPowered = false;
+  }
 }
 
 #endif // !SENSOR_VIRTUAL

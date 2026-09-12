@@ -43,6 +43,34 @@ bool publishToAquaControl(uint32_t seconds2000, int16_t* readings,
  */
 bool syncTimeNtp(uint32_t timeoutMs = 5000);
 
+/**
+ * @brief Callback signature for commands received in telemetry responses.
+ * @param cmdId Unique command identifier.
+ * @param action Action string (e.g. "start_experiment", "stop_monitor", etc.)
+ * @param payloadJson Raw JSON string containing action parameters.
+ */
+typedef void (*SensorCommandCallback)(const char* cmdId, const char* action, const char* payloadJson);
+
+/**
+ * @brief Registers callback function to execute received commands.
+ */
+void setSensorCommandCallback(SensorCommandCallback cb);
+
+/**
+ * @brief Sends command acknowledgement back to AquaControl dashboard.
+ * @param cmdId UUID of the executed control command.
+ * @param success True if executed successfully, false otherwise.
+ * @param sensorStateJson Optional JSON object string representing updated sensor state.
+ * @return True if acknowledged with HTTP 200.
+ */
+bool acknowledgeSensorCommand(const char* cmdId, bool success, const char* sensorStateJson = nullptr);
+
+/**
+ * @brief Checks for pending commands on AquaControl dashboard while logger is in idle state.
+ * @return True if a command was received, false otherwise.
+ */
+bool pollPendingCommands();
+
 #else
 
 static inline bool wifiConnect() { return false; }
@@ -51,5 +79,9 @@ static inline bool syncTimeNtp(uint32_t = 0) { return false; }
 static inline bool publishToAquaControl(uint32_t, int16_t*, int16_t, uint32_t) {
   return false;
 }
+typedef void (*SensorCommandCallback)(const char*, const char*, const char*);
+static inline void setSensorCommandCallback(SensorCommandCallback) {}
+static inline bool acknowledgeSensorCommand(const char*, bool, const char* = nullptr) { return false; }
+static inline bool pollPendingCommands() { return false; }
 
 #endif // WIFI_MODULE

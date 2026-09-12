@@ -22,6 +22,7 @@
 #include <RtcDS3231.h>
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
+#include <esp_sntp.h>
 #include <esp_task_wdt.h>
 #include <time.h>
 
@@ -53,20 +54,7 @@ bool wifiConnect() {
   }
 
   Logf(" connected (IP: %s)\n", WiFi.localIP().toString().c_str());
-  configTime(0, 0, "pool.ntp.org", "time.nist.gov");
-
-  // If time is not yet valid, allow up to 3s for quick initial NTP sync
-  if (time(nullptr) < 1577836800ULL) {
-    unsigned long tNtp = millis();
-    while (time(nullptr) < 1577836800ULL && (millis() - tNtp < 3000)) {
-      delay(100);
-    }
-    time_t now = time(nullptr);
-    if (now >= 1577836800ULL) {
-      RtcDateTime ntpDt((uint32_t)(now - LOCAL_TZ_OFFSET_SEC - UNIX_OFFSET_2000));
-      setRtcDateTime(ntpDt);
-    }
-  }
+  syncTimeNtp(3000);
 
   return true;
 }
@@ -74,18 +62,6 @@ bool wifiConnect() {
 /* ----------------------------- NTP Time Sync ----------------------------- */
 
 bool syncTimeNtp(uint32_t timeoutMs) {
-  time_t now = time(nullptr);
-  if (now >= 1577836800ULL) {
-    RtcDateTime ntpDt((uint32_t)(now - LOCAL_TZ_OFFSET_SEC - UNIX_OFFSET_2000));
-    setRtcDateTime(ntpDt);
-    formatDateTime(rtcNow);
-    Logf("[NTP] Time already synchronized: %s %s\n", dateStr, LOCAL_TZ_NAME);
-    if (isRtcAvailable()) {
-      Logln("[NTP] Hardware DS3231 RTC synchronized.");
-    }
-    return true;
-  }
-
   if (WiFi.status() != WL_CONNECTED) {
     if (!wifiConnect()) {
       Logln("[NTP] Cannot sync time: WiFi connection failed.");
@@ -97,19 +73,23 @@ bool syncTimeNtp(uint32_t timeoutMs) {
   configTime(0, 0, "pool.ntp.org", "time.nist.gov");
 
   unsigned long t0 = millis();
-  while (time(nullptr) < 1577836800ULL && (millis() - t0 < timeoutMs)) {
+  while (sntp_get_sync_status() != SNTP_SYNC_STATUS_COMPLETED && (millis() - t0 < timeoutMs)) {
     delay(100);
+    esp_task_wdt_reset();
   }
 
-  now = time(nullptr);
-  if (now >= 1577836800ULL) {
-    RtcDateTime ntpDt((uint32_t)(now - LOCAL_TZ_OFFSET_SEC - UNIX_OFFSET_2000));
+  time_t utcNow = time(nullptr);
+  if (sntp_get_sync_status() == SNTP_SYNC_STATUS_COMPLETED || utcNow >= 1577836800ULL) {
+    // Convert authoritative UTC time to local timezone (UTC-5)
+    time_t localNow = utcNow - LOCAL_TZ_OFFSET_SEC;
+    uint32_t sec2000 = (uint32_t)(localNow - UNIX_OFFSET_2000);
+    RtcDateTime ntpDt(sec2000);
     setRtcDateTime(ntpDt);
     formatDateTime(rtcNow);
     Logf("[NTP] Time synchronized successfully: %s %s\n", dateStr, LOCAL_TZ_NAME);
 
     if (isRtcAvailable()) {
-      Logln("[NTP] Hardware DS3231 RTC synchronized with NTP.");
+      Logln("[NTP] Hardware DS3231 RTC updated with NTP local time.");
     }
     return true;
   }
@@ -150,6 +130,133 @@ void wifiDisconnect() {
   WiFi.mode(WIFI_OFF);
   Logln("WiFi disconnected from AP (Radio powered OFF, ESP-NOW disabled).");
 #endif
+}
+
+/* ----------------------------- Command Processing & Ack ----------------------------- */
+
+static SensorCommandCallback s_commandCallback = nullptr;
+
+void setSensorCommandCallback(SensorCommandCallback cb) {
+  s_commandCallback = cb;
+}
+
+static void processTelemetryResponse(const String& response) {
+  if (response.indexOf("\"has_command\":true") == -1) {
+    return; // Fast-path: no command piggybacked
+  }
+
+  StaticJsonDocument<512> doc;
+  DeserializationError err = deserializeJson(doc, response);
+  if (err) {
+    Logf("[CMD] Response JSON parse error: %s\n", err.c_str());
+    return;
+  }
+
+  if (doc["has_command"].as<bool>()) {
+    JsonObject pending = doc.containsKey("pending_command") ? doc["pending_command"] : doc["command"];
+    const char* cmdId = pending["id"];
+    const char* cmdType = pending["command_type"] | "";
+    JsonObject payload = pending["payload"];
+    const char* action = payload["action"] | "";
+
+    String effectiveAction = action;
+    if (effectiveAction.length() == 0) {
+      if (strcmp(cmdType, "start") == 0) effectiveAction = "start_monitor";
+      else if (strcmp(cmdType, "stop") == 0) effectiveAction = "stop_monitor";
+      else effectiveAction = cmdType;
+    }
+
+    if (!payload.containsKey("interval_sec") && effectiveAction == "start_monitor") {
+      payload["interval_sec"] = 5;
+    }
+
+    String payloadStr;
+    serializeJson(payload, payloadStr);
+
+    Logf("[CMD] Received command ID: %s | Action: %s (Type: %s)\n",
+         cmdId ? cmdId : "null", effectiveAction.c_str(), cmdType);
+    if (s_commandCallback && cmdId && strlen(cmdId) > 0) {
+      s_commandCallback(cmdId, effectiveAction.c_str(), payloadStr.c_str());
+    }
+  }
+}
+
+bool acknowledgeSensorCommand(const char* cmdId, bool success, const char* sensorStateJson) {
+  if (WiFi.status() != WL_CONNECTED || !cmdId || strlen(cmdId) == 0) {
+    return false;
+  }
+
+  String ackUrl = String("https://") + AQUACONTROL_HOST + "/api/commands/" + cmdId + "/acknowledge";
+
+  StaticJsonDocument<512> ackDoc;
+  ackDoc["success"] = success;
+  if (sensorStateJson && strlen(sensorStateJson) > 0) {
+    StaticJsonDocument<256> stateDoc;
+    if (deserializeJson(stateDoc, sensorStateJson) == DeserializationError::Ok) {
+      ackDoc["sensor_state"] = stateDoc.as<JsonObject>();
+    }
+  }
+
+  String jsonOut;
+  serializeJson(ackDoc, jsonOut);
+
+  WiFiClientSecure ackClient;
+  ackClient.setInsecure();
+  ackClient.setHandshakeTimeout(4);
+  ackClient.setTimeout(4);
+
+  HTTPClient ackHttp;
+  ackHttp.begin(ackClient, ackUrl);
+  ackHttp.addHeader("Content-Type", "application/json");
+  ackHttp.addHeader("X-Device-Key", AQUACONTROL_DEVICE_KEY);
+
+  esp_task_wdt_reset();
+  int code = ackHttp.POST(jsonOut);
+  esp_task_wdt_reset();
+
+  bool ok = (code >= 200 && code < 300);
+#ifdef DEBUG
+  Logf("[ACK] Command %s -> HTTP %d (%s)\n", cmdId, code, ok ? "OK" : "FAIL");
+#endif
+  ackHttp.end();
+  ackClient.stop();
+  return ok;
+}
+
+bool pollPendingCommands() {
+  if (WiFi.status() != WL_CONNECTED) {
+    return false;
+  }
+
+  String url = String("https://") + AQUACONTROL_HOST + "/api/commands/pending";
+
+  WiFiClientSecure pollClient;
+  pollClient.setInsecure();
+  pollClient.setHandshakeTimeout(3);
+  pollClient.setTimeout(3);
+
+  HTTPClient pollHttp;
+  pollHttp.begin(pollClient, url);
+  pollHttp.addHeader("X-Device-Key", AQUACONTROL_DEVICE_KEY);
+
+  esp_task_wdt_reset();
+  int httpCode = pollHttp.GET();
+  esp_task_wdt_reset();
+
+  if (httpCode > 0) {
+    String response = pollHttp.getString();
+    pollHttp.end();
+    pollClient.stop();
+    if (httpCode >= 200 && httpCode < 300) {
+      processTelemetryResponse(response);
+      return true;
+    }
+    return false;
+  }
+
+  pollHttp.end();
+  pollClient.stop();
+  return false;
 }
 
 /* ----------------------------- HTTPS POST ----------------------------- */
@@ -236,7 +343,11 @@ bool publishToAquaControl(uint32_t seconds2000, int16_t* readings,
 #ifdef DEBUG
     Logf("   HTTP %d: %s\n", httpCode, response.c_str());
 #endif
-    return (httpCode >= 200 && httpCode < 300);
+    if (httpCode >= 200 && httpCode < 300) {
+      processTelemetryResponse(response);
+      return true;
+    }
+    return false;
   }
 
   // If POST failed (e.g. idle keep-alive timed out on Vercel), reset socket and retry once
@@ -259,7 +370,11 @@ bool publishToAquaControl(uint32_t seconds2000, int16_t* readings,
 #ifdef DEBUG
     Logf("   HTTP %d (retry): %s\n", httpCode, response.c_str());
 #endif
-    return (httpCode >= 200 && httpCode < 300);
+    if (httpCode >= 200 && httpCode < 300) {
+      processTelemetryResponse(response);
+      return true;
+    }
+    return false;
   }
 
   Logf("   HTTP POST retry failed: %s (err %d)\n", s_http.errorToString(httpCode).c_str(), httpCode);

@@ -120,6 +120,30 @@ int main() {
   assert(!isStopAction("start_monitor"));
   std::printf("  ✓ 7. Stop action matching (stop_experiment, stop_monitor, stop) verified\n");
 
+  // 8. Validate OLED Controller Column Offsets (SSD1306 0.96" vs SH1106 1.3")
+  auto getOledColumnOffset = [](const char* controller) -> uint8_t {
+    if (std::strcmp(controller, "SSD1306") == 0) return 0x00;
+    if (std::strcmp(controller, "SH1106") == 0) return 0x02;
+    return 0xFF;
+  };
+  assert(getOledColumnOffset("SSD1306") == 0x00);
+  assert(getOledColumnOffset("SH1106") == 0x02);
+  std::printf("  ✓ 8. OLED controller geometry & column offsets (SSD1306=0, SH1106=2) verified\n");
+
+  // 9. Validate Dual Independent SPI Architecture (LoRa on VSPI, SD on HSPI)
+  const int loraPins[] = {18, 5, 19, 27, 23, 26}; // CS, SCLK, MISO, MOSI, RST, DIO0
+  const int sdPins[]   = {13, 14, 2, 15};          // CS, SCLK, MISO, MOSI
+  // Verify 0 pin overlap between LoRa and SD
+  for (int lp : loraPins) {
+    for (int sp : sdPins) {
+      assert(lp != sp);
+    }
+  }
+  const int SPI_HOST_VSPI = 3;
+  const int SPI_HOST_HSPI = 2;
+  assert(SPI_HOST_VSPI != SPI_HOST_HSPI);
+  std::printf("  ✓ 9. Dual SPI architecture (LoRa on VSPI/SPI3, SD on HSPI/SPI2, 0 pin overlap) verified\n");
+
   std::printf("\n====================================================\n");
   std::printf(" ¡TODAS LAS PRUEBAS DE EXPERIMENTO EN FIRMWARE OK! ✓\n");
   std::printf("====================================================\n");

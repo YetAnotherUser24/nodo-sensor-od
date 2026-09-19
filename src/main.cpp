@@ -125,7 +125,10 @@ PubSubClient mqtt(gsmClient);
 #ifdef SD_MODULE
 SdFat SD;
 SdFile sdFile;
-SPIClass sdSPI(HSPI);
+#ifndef SD_SPI_HOST
+#define SD_SPI_HOST HSPI
+#endif
+SPIClass sdSPI(SD_SPI_HOST);
 #endif
 
 /* ------------------------------ RTC -------------------------------- */

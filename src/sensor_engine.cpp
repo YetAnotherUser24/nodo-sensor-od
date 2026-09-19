@@ -219,7 +219,7 @@ static int16_t odReadAll(int16_t* values) {
 
 #ifdef SENSOR_BATTERY_ADC
 static uint32_t batteryAdcRead() {
-  uint32_t rawMv = analogReadMilliVolts(BATTERY_ADC_PIN);
+  uint32_t rawMv = analogReadMilliVolts(BOARD_BAT_ADC_PIN);
   return rawMv * BATTERY_ADC_MULTIPLIER;
 }
 #endif

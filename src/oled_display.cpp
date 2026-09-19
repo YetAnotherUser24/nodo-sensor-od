@@ -1,6 +1,6 @@
 /**
  * @file oled_display.cpp
- * @brief 1.3" I2C SH1106 OLED visualization implementation for n-logger platform.
+ * @brief I2C OLED (1.3" SH1106 / 0.96" SSD1306) visualization implementation for n-logger platform.
  */
 
 #include "oled_display.h"
@@ -17,11 +17,12 @@
 #define OLED_BUF_SIZE (OLED_WIDTH * OLED_HEIGHT / 8) // 1024 bytes
 
 /**
- * @brief Dedicated, rock-solid SH1106 1.3" 128x64 I2C driver subclassing Adafruit_GFX.
+ * @brief Dedicated, rock-solid OLED 128x64 I2C driver subclassing Adafruit_GFX.
+ * Supports both 0.96" SSD1306 and 1.3" SH1106 controllers.
  */
-class SH1106_Display : public Adafruit_GFX {
+class OledDisplayDriver : public Adafruit_GFX {
 public:
-  SH1106_Display() : Adafruit_GFX(OLED_WIDTH, OLED_HEIGHT), _i2cAddr(OLED_I2C_ADDR_PRIMARY) {
+  OledDisplayDriver() : Adafruit_GFX(OLED_WIDTH, OLED_HEIGHT), _i2cAddr(OLED_I2C_ADDR_PRIMARY) {
     memset(_buffer, 0, sizeof(_buffer));
   }
 
@@ -34,6 +35,27 @@ public:
       return false;
     }
 
+#if defined(OLED_CONTROLLER_SSD1306)
+    // Standard SSD1306 0.96" initialization sequence with internal charge pump
+    static const uint8_t init_cmds[] = {
+        0xAE,         // 1. Display OFF
+        0xD5, 0x80,   // 2. Set Display Clock Divide Ratio / Osc Freq (0x80)
+        0xA8, 0x3F,   // 3. Set Multiplex Ratio (64 lines: 0x3F)
+        0xD3, 0x00,   // 4. Set Display Offset (0x00)
+        0x40,         // 5. Set Display Start Line (0)
+        0x8D, 0x14,   // 6. Charge Pump Setting (0x14 = Enable Charge Pump)
+        0x20, 0x02,   // 7. Memory Addressing Mode (0x02 = Page Addressing Mode)
+        0xA1,         // 8. Set Segment Re-map (0xA1 = column 127 mapped to SEG0)
+        0xC8,         // 9. Set COM Output Scan Direction (0xC8 = remapped)
+        0xDA, 0x12,   // 10. Set COM Pins Hardware Config (0x12 = alternative)
+        0x81, 0xCF,   // 11. Set Contrast Control (0xCF)
+        0xD9, 0xF1,   // 12. Set Pre-charge Period (0xF1)
+        0xDB, 0x40,   // 13. Set VCOM Deselect Level (0x40 = ~0.77*Vcc)
+        0xA4,         // 14. Entire Display ON Resume (0xA4)
+        0xA6,         // 15. Set Normal Display (0xA6 = non-inverted)
+        0xAF          // 16. Display ON!
+    };
+#else
     // Standard SH1106 1.3" initialization sequence with internal charge pump
     static const uint8_t init_cmds[] = {
         0xAE,         // 1. Display OFF
@@ -42,18 +64,18 @@ public:
         0xD3, 0x00,   // 4. Set Display Offset (0x00)
         0x40,         // 5. Set Display Start Line (0)
         0xAD, 0x8B,   // 6. Set DC-DC Charge Pump Mode (0x8B = Internal DC-DC ON)
-        0x8D, 0x14,   // 7. SSD1306 charge pump compat (0x14 = ON)
-        0x33,         // 8. Set Charge Pump output voltage to 9.0V
-        0xA1,         // 9. Set Segment Re-map (0xA1 = column 127 mapped to SEG0)
-        0xC8,         // 10. Set COM Output Scan Direction (0xC8 = remapped)
-        0xDA, 0x12,   // 11. Set COM Pins Hardware Config (0x12 = alternative)
-        0x81, 0xCF,   // 12. Set Contrast Control (0xCF)
-        0xD9, 0x22,   // 13. Set Pre-charge Period (0x22)
-        0xDB, 0x40,   // 14. Set VCOM Deselect Level (0x40 = ~0.77*Vcc)
-        0xA4,         // 15. Entire Display ON Resume (0xA4)
-        0xA6,         // 16. Set Normal Display (0xA6 = non-inverted)
-        0xAF          // 17. Display ON!
+        0x33,         // 7. Set Charge Pump output voltage to 9.0V
+        0xA1,         // 8. Set Segment Re-map (0xA1 = column 127 mapped to SEG0)
+        0xC8,         // 9. Set COM Output Scan Direction (0xC8 = remapped)
+        0xDA, 0x12,   // 10. Set COM Pins Hardware Config (0x12 = alternative)
+        0x81, 0xCF,   // 11. Set Contrast Control (0xCF)
+        0xD9, 0x22,   // 12. Set Pre-charge Period (0x22)
+        0xDB, 0x40,   // 13. Set VCOM Deselect Level (0x40 = ~0.77*Vcc)
+        0xA4,         // 14. Entire Display ON Resume (0xA4)
+        0xA6,         // 15. Set Normal Display (0xA6 = non-inverted)
+        0xAF          // 16. Display ON!
     };
+#endif
 
     for (size_t i = 0; i < sizeof(init_cmds); i++) {
       sendCommand(init_cmds[i]);
@@ -85,16 +107,16 @@ public:
   }
 
   void display() {
-    // Write 8 pages to SH1106 display RAM
+    // Write 8 pages to display RAM
     for (uint8_t page = 0; page < OLED_PAGE_COUNT; page++) {
       // 1. Set page address (0xB0 .. 0xB7)
       // 2. Set higher column address (0x10)
-      // 3. Set lower column address (0x02 = 2-pixel offset for SH1106 132-column RAM)
+      // 3. Set lower column address (0x00 for SSD1306, 0x02 for SH1106 132-column RAM)
       Wire.beginTransmission(_i2cAddr);
       Wire.write(0x00); // Command stream (Co=0, D/C#=0)
       Wire.write(0xB0 + page);
       Wire.write(0x10);
-      Wire.write(0x02);
+      Wire.write(OLED_COLUMN_OFFSET);
       Wire.endTransmission();
 
       // 4. Send 128 bytes of pixel data in 16-byte I2C chunks
@@ -128,7 +150,8 @@ private:
   uint8_t _buffer[OLED_BUF_SIZE];
 };
 
-static SH1106_Display oledDisplay;
+typedef OledDisplayDriver SH1106_Display;
+static OledDisplayDriver oledDisplay;
 static bool oledInitialized = false;
 
 extern bool bleDeviceConnected;
@@ -148,6 +171,14 @@ bool oledInit() {
   setPinActive(I2C_EN_PIN, I2C_EN_ACTIVE_HIGH);
   delay(50); // Allow 3.3V power rail and display controller internal POR to stabilize
 
+#if defined(OLED_RST_PIN) && (OLED_RST_PIN != -1)
+  pinMode(OLED_RST_PIN, OUTPUT);
+  digitalWrite(OLED_RST_PIN, LOW);
+  delay(10);
+  digitalWrite(OLED_RST_PIN, HIGH);
+  delay(10);
+#endif
+
   #ifdef DEBUG
   Logln("\r[OLED] Beginning OLED...");
   #endif
@@ -156,7 +187,6 @@ bool oledInit() {
     if (oledDisplay.begin(OLED_I2C_ADDR_PRIMARY)) {
       oledInitialized = true;
       break;
-    delay(100);
     } else if (oledDisplay.begin(OLED_I2C_ADDR_SECONDARY)) {
       oledInitialized = true;
       break;
@@ -169,7 +199,7 @@ bool oledInit() {
 
   if (!oledInitialized) {
 #ifdef DEBUG
-    Logln("[OLED] SH1106 display not detected on I2C bus (checked 0x3C, 0x3D).");
+    Logf("[OLED] %s display not detected on I2C bus (checked 0x3C, 0x3D).\n", OLED_TYPE_NAME);
 #endif
     return false;
   }
@@ -181,7 +211,7 @@ bool oledInit() {
   oledDisplay.display();
 
 #ifdef DEBUG
-  Logln("[OLED] 1.3\" SH1106 OLED initialized successfully.");
+  Logf("[OLED] %s OLED initialized successfully.\n", OLED_TYPE_NAME);
 #endif
 
   return true;

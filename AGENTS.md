@@ -20,11 +20,19 @@ The codebase strictly abstracts hardware board variations via [src/board.h](file
 
 | Platform | Build Flag | Target MCU | Key Peripherals | Power / Sensor Pins |
 | :--- | :--- | :--- | :--- | :--- |
-| **Natek-SD v2.0** | `-DBOARD_NATEK_SD_V2` | ESP32-WROOM-32E (bare) | INA226 (`0x45`), SH1106 OLED (`0x3C`), DS3231 RTC (`0x68`), MicroSD (SPI), RS-485 | `EN_5V=19`, `OD_PWR=12`, `RS485_EN=27`, `I2C_EN=25`, `LED_PIN=32` |
-| **Natek-GPRS v0.2.0** | `-DBOARD_NATEK_GPRS_V02` | LilyGO T-A7670SA | SIM7670 4G modem, ADC battery (GPIO 35), SH1106 OLED, DS3231 RTC, MicroSD, RS-485 | `BOARD_PWRKEY=4`, `BOARD_POWERON=12`, `MODEM_RESET=5`, `LED_PIN=23` |
+| **Natek-SD v2.0** | `-DBOARD_NATEK_SD_V2` | ESP32-WROOM-32E (bare) | INA226 (`0x45`), 1.3" SH1106 OLED (`0x3C`), DS3231 RTC (`0x68`), MicroSD (SPI), RS-485 | `EN_5V=19`, `OD_PWR=12`, `RS485_EN=27`, `I2C_EN=25`, `LED_PIN=32` |
+| **Natek-GPRS v0.2.0** | `-DBOARD_NATEK_GPRS_V02` | LilyGO T-A7670SA | SIM7670 4G modem, ADC battery (GPIO 35), 1.3" SH1106 OLED, DS3231 RTC, MicroSD, RS-485 | `BOARD_PWRKEY=4`, `BOARD_POWERON=12`, `MODEM_RESET=5`, `LED_PIN=23` |
+| **LilyGO T3 LoRa32** | `-DBOARD_LILYGO_LORA32` | LilyGO T3 LoRa32 v1.6 | SX1278 LoRa, onboard 0.96" SSD1306 OLED (`0x3C`), DS3231 RTC, MicroSD, RS-485 | `LORA_CS=18`, `LORA_RST=23`, `LORA_DIO0=26`, `OD_PWR=25`, `LED_PIN=25` |
 
 ### Critical Electrical & Power Rail Rules
-* **3.3V I2C Rail (`I2C_EN_PIN = 25`)**: Powers the DS3231 RTC and SH1106 OLED. **Never de-energize** this pin during continuous monitoring or active experiment loops, as resetting OLED power crashes the I2C bus.
+* **3.3V I2C Rail (`I2C_EN_PIN = 25`)**: Powers the DS3231 RTC and SH1106 OLED (Natek-SD). **Never de-energize** this pin during continuous monitoring or active experiment loops, as resetting OLED power crashes the I2C bus.
+* **OLED Controller Differences**:
+  - **1.3" SH1106**: Used on Natek-SD and Natek-GPRS. Requires 2-pixel column offset (`0x02`) and internal DC-DC commands (`0xAD 0x8B`, `0x33`).
+  - **0.96" SSD1306**: Onboard display for LilyGO T3 LoRa32. Requires 0-pixel column offset (`0x00`), charge pump enable (`0x8D 0x14`), and page addressing mode (`0x20 0x02`).
+* **Dual SPI Controllers (LilyGO T3 LoRa32)**:
+  - **VSPI (`SPI3`)**: Dedicated to LoRa SX1278 (`SCK=5`, `MISO=19`, `MOSI=27`, `CS=18`, `RST=23`, `DIO0=26`). Initialized via default `SPI` object or `loraSpiInit()`.
+  - **HSPI (`SPI2`)**: Dedicated to MicroSD card slot (`SCK=14`, `MISO=2`, `MOSI=15`, `CS=13`). Driven independently by `sdSPI`.
+  - Both buses have zero shared pins, preventing CS contention and allowing simultaneous transceiver and logging transactions.
 * **5V Boost Rail (`EN_5V_PIN = 19`) & Sensor Power (`OD_PWR_PIN = 12`)**: Supplies the MAX13487 RS-485 transceiver and the OPTOD sensor.
 * **Sensor Warmup Optimization**: The OPTOD sensor requires ~1500 ms to boot from a cold power-on. During continuous monitoring or experiments (`experimentActive || webMonitorActive`), the sensor rail is **kept energized** between samples, enabling up to **2-second continuous sampling rates**. Call `stopPrimarySensorRealtime()` upon stopping to cut power.
 
@@ -40,6 +48,7 @@ Inspect [platformio.ini](file:///c:/Users/Sam/Documents/Tesis/Codigos/od-logger/
 | `od-logger-web-virtual`| Natek-SD v2.0 | WiFi + Virtual Sensor + Web Master | Bench simulation target without physical OD or INA226 sensors. Generates synthetic telemetry for UI testing. |
 | `od-logger-sd` | Natek-SD v2.0 | SD + BLE + INA226 + OLED + Sleep | Autonomous low-power field logger. Samples periodically, dumps to SD `/YYYYMMDD.CSV`, enters deep sleep. |
 | `od-logger-gprs` | Natek-GPRS v0.2.0 | GPRS + SD + BLE + ADC + OLED + Sleep | Cellular production target. Streams batch telemetry to ThingsBoard via MQTT over SIM7670 modem. |
+| `od-logger-lora32` | LilyGO T3 LoRa32 | LoRa + WiFi + 0.96" OLED + ADC + Web Master | LoRa32 telemetry node with onboard 0.96" SSD1306 display and Web Master streaming. |
 | `i2c-scanner` | Natek-SD v2.0 | Standalone diagnostic | Scans I2C bus addresses (`0x3C`, `0x45`, `0x50`, `0x68`) and prints annotated device names to Serial. |
 
 ---

@@ -1,6 +1,6 @@
 /**
  * @file oled_display.h
- * @brief 1.3" I2C SH1106 OLED visualization module for n-logger platform.
+ * @brief I2C OLED (1.3" SH1106 / 0.96" SSD1306) visualization module for n-logger platform.
  */
 
 #pragma once
@@ -10,7 +10,7 @@
 #include <RtcDS3231.h>
 
 /**
- * @brief Initializes the SH1106 OLED display if present on the I2C bus.
+ * @brief Initializes the OLED display (SH1106 or SSD1306) if present on the I2C bus.
  * @return True if display was successfully detected and initialized, false otherwise.
  */
 bool oledInit();

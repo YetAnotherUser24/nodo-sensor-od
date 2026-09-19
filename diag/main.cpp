@@ -182,7 +182,7 @@ static bool diagRadarOn = false;
 static int16_t diagRadarReadSingle() {
   modbus_rtu::ModbusRtu mb(diagRadarSerial);
   modbus_rtu::ModbusRtu::Config cfg;
-  cfg.responseTimeoutMs = 500;
+  cfg.responseTimeoutMs = 1000;
   cfg.interFrameGapMs = 4;
   mb.configure(cfg);
 

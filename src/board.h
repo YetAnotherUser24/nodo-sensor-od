@@ -371,7 +371,7 @@ inline void setPinInactive(int pin, bool activeHigh, bool holdInSleep = false) {
 #define BOARD_NAME "LilyGO T3 LoRa32 + HAT"
 
 #ifndef LED_PIN
-#define LED_PIN 25
+#define LED_PIN -1
 #endif
 
 #ifndef WAKEUP_PIN
@@ -541,6 +541,18 @@ inline void setPinInactive(int pin, bool activeHigh, bool holdInSleep = false) {
  * ========================================================================== */
 
 /**
+ * @brief Displays a repeated blink pattern to indicate error codes.
+ */
+inline void error(int errorNum, int errPin = LED_PIN) {
+  for (int i = 0; i < errorNum; i++) {
+    digitalWrite(errPin, HIGH);
+    delay(150);
+    digitalWrite(errPin, LOW);
+    delay(150);
+  }
+}
+
+/**
  * @brief Initializes board status LEDs and puts all board power rails into low-power inactive
  * state.
  *
@@ -552,7 +564,6 @@ inline void boardInit() {
   pinMode(LED_PIN, OUTPUT);
   digitalWrite(LED_PIN, LOW);
 
-#ifndef GPRS_MODULE
 #ifdef BOARD_POWERON_PIN
   setPinInactive(BOARD_POWERON_PIN, true);
 #endif
@@ -561,7 +572,6 @@ inline void boardInit() {
 #endif
 #ifdef MODEM_RESET_PIN
   setPinInactive(MODEM_RESET_PIN, MODEM_RESET_LEVEL == HIGH);
-#endif
 #endif
 
 #ifdef SD_MODULE

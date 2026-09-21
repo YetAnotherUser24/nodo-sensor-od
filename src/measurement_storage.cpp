@@ -19,8 +19,7 @@
 #include <Arduino.h>
 #include <HardwareSerial.h>
 
-#include "eeprom_i2c.h"
-#include "error_sensor.h"
+#include "board.h"
 #include "measurement_storage.h"
 #include "n_logger_config.h"
 #include "wifi_http.h"
@@ -50,9 +49,6 @@
 extern ModuleConfig moduleCfg;
 extern TelemetryPayload telemetryPayload;
 
-extern RTC_DATA_ATTR uint16_t eepromWritePage;
-extern byte eepromPageBuf[EEPROM_PAGE_SIZE];
-extern bool needFlushToSD;
 
 #ifdef SD_MODULE
 extern SdFat SD;
@@ -85,139 +81,6 @@ String markLineSent(const String& line) {
   return s.substring(0, lastComma) + ", 1";
 }
 
-/**
- * @brief Count free EEPROM pages using bit-mapped header.
- */
-uint16_t getEEPROMFreePages() {
-  if (!isEepromAvailable()) {
-    return 0;
-  }
-
-  uint8_t header[EEPROM_HEADER_SIZE];
-
-  i2c_eeprom_read_buffer(EEPROM_ADDRESS, 0, header, EEPROM_HEADER_SIZE);
-
-  uint16_t used = 0;
-  for (uint16_t i = 0; i < EEPROM_HEADER_SIZE; i++) {
-    uint8_t b = header[i];
-    used += (b & 1) + ((b >> 1) & 1) + ((b >> 2) & 1) + ((b >> 3) & 1) + ((b >> 4) & 1) +
-            ((b >> 5) & 1) + ((b >> 6) & 1) + ((b >> 7) & 1);
-  }
-
-  uint16_t totalPages = EEPROM_MAX_PAGES - EEPROM_HEADER_SIZE;
-  return totalPages - used;
-}
-
-/**
- * @brief Clears external I2C EEPROM header and resets page write pointer.
- */
-void clearEEPROM() {
-  if (!isEepromAvailable()) return;
-  resetEEPromHeader(EEPROM_ADDRESS);
-  eepromWritePage = 0;
-  needFlushToSD = false;
-  Logln("EEPROM cleared.");
-}
-
-/**
- * @brief Logs EEPROM storage status or dumps an unpacked page record.
- */
-void peekEEPROM(int16_t pageIndex) {
-  if (!isEepromAvailable()) {
-    Logln("No external EEPROM detected.");
-    return;
-  }
-  uint16_t totalPages = EEPROM_MAX_PAGES - EEPROM_HEADER_SIZE;
-  uint16_t freePages = getEEPROMFreePages();
-  uint16_t usedPages = totalPages - freePages;
-
-  if (pageIndex < 0) {
-    Logf("--- EEPROM STORAGE (NextWrite: %u/%u | Used: %u | Free: %u) ---\n",
-         eepromWritePage, totalPages, usedPages, freePages);
-
-    if (usedPages == 0) {
-      Logln("No active pages stored in EEPROM.");
-      return;
-    }
-
-    uint8_t header[EEPROM_HEADER_SIZE * EEPROM_PAGE_SIZE];
-    for (uint16_t h = 0; h < EEPROM_HEADER_SIZE; h++) {
-      i2c_eeprom_read_buffer(EEPROM_ADDRESS, h * EEPROM_PAGE_SIZE,
-                             header + (h * EEPROM_PAGE_SIZE), EEPROM_PAGE_SIZE);
-    }
-
-    byte pageBuf[EEPROM_PAGE_SIZE];
-    for (uint16_t p = 0; p < totalPages; p++) {
-      bool isUsed = (header[p / 8] >> (p % 8)) & 1;
-      if (!isUsed)
-        continue;
-
-      uint16_t addr = (p + EEPROM_HEADER_SIZE) * EEPROM_PAGE_SIZE;
-      i2c_eeprom_read_buffer(EEPROM_ADDRESS, addr, pageBuf, EEPROM_PAGE_SIZE);
-
-      uint32_t seconds2000 = ((uint32_t*)pageBuf)[0];
-      if (seconds2000 == 0 || seconds2000 == 0xFFFFFFFF) {
-        Logf("[P%u] (Empty/Corrupt)\n", p);
-        continue;
-      }
-
-      RtcDateTime ts(seconds2000);
-      formatDateTime(ts);
-
-      int16_t* readings = (int16_t*)&pageBuf[4];
-      int16_t tempRaw = readings[MAX_SENSOR_READINGS];
-      float tempC = tempRaw / 100.0f;
-      uint8_t sentFlag = pageBuf[EEPROM_SENT_FLAG_OFFSET];
-
-      char sensStr[64] = "";
-      int offset = 0;
-      for (int s = 0; s < MAX_SENSOR_READINGS; s++) {
-        if (s > 0) {
-          offset += snprintf(sensStr + offset, sizeof(sensStr) - offset, ", ");
-        }
-        offset += snprintf(sensStr + offset, sizeof(sensStr) - offset, "%d", readings[s]);
-      }
-
-      Logf("[P%u] %s | S:[%s] | %.2fC | Sent:%s\n", p, dateStr, sensStr, tempC,
-           (sentFlag == FLAG_SENT) ? "YES" : "NO");
-    }
-    return;
-  }
-
-  if (pageIndex >= (int16_t)totalPages) {
-    Logf("[EEPROM] Invalid page %d (max index is %d)\n", pageIndex, totalPages - 1);
-    return;
-  }
-
-  byte pageBuf[EEPROM_PAGE_SIZE];
-  uint16_t addr = (pageIndex + EEPROM_HEADER_SIZE) * EEPROM_PAGE_SIZE;
-  i2c_eeprom_read_buffer(EEPROM_ADDRESS, addr, pageBuf, EEPROM_PAGE_SIZE);
-
-  uint32_t seconds2000 = ((uint32_t*)pageBuf)[0];
-  if (seconds2000 == 0 || seconds2000 == 0xFFFFFFFF) {
-    Logf("--- EEPROM PAGE %d: EMPTY / UNWRITTEN ---\n", pageIndex);
-    return;
-  }
-
-  RtcDateTime ts(seconds2000);
-  formatDateTime(ts);
-
-  int16_t* readings = (int16_t*)&pageBuf[4];
-  int16_t tempRaw = readings[MAX_SENSOR_READINGS];
-  float tempC = tempRaw / 100.0f;
-
-  uint32_t status = ((uint32_t)(uint16_t)readings[MAX_SENSOR_READINGS + 1]) |
-                    (((uint32_t)(uint16_t)readings[MAX_SENSOR_READINGS + 2]) << 16);
-  uint8_t sentFlag = pageBuf[EEPROM_SENT_FLAG_OFFSET];
-
-  Logf("--- EEPROM PAGE %d ---\n", pageIndex);
-  Logf("Time: %s (ts=%u)\n", dateStr, seconds2000);
-  for (int i = 0; i < MAX_SENSOR_READINGS; i++) {
-    Logf("Sensor[%d]: %d\n", i, readings[i]);
-  }
-  Logf("Temp: %.2f C | Status: 0x%08X | Sent: %s\n", tempC, status,
-       (sentFlag == FLAG_SENT) ? "YES" : "NO");
-}
 
 /**
  * @brief Returns available SD capacity (MB).
@@ -359,53 +222,9 @@ void takeMeasurement() {
   Logf("==========================================\n");
 #endif
 
-  /* EEPROM storage only if external I2C EEPROM hardware is present */
-  if (isEepromAvailable()) {
-    /* EEPROM page building: ts(4) + readings(N*2) + temp(2) + status(4) + pad + sent */
-    for (int i = 0; i < 4; i++)
-      eepromPageBuf[i] = ((byte*)&secondsSince2000)[i];
-
-    for (int i = 0; i < MAX_SENSOR_READINGS * 2; i++)
-      eepromPageBuf[i + 4] = ((byte*)telemetryPayload.sensorReadings)[i];
-
-    for (int i = 0; i < 2; i++)
-      eepromPageBuf[i + 4 + MAX_SENSOR_READINGS * 2] = ((byte*)&tempCenti)[i];
-
-    for (int i = 0; i < 4; i++)
-      eepromPageBuf[i + 4 + MAX_SENSOR_READINGS * 2 + 2] = ((byte*)&telemetryPayload.status)[i];
-
-    for (int i = 4 + MAX_SENSOR_READINGS * 2 + 2 + 4; i < EEPROM_PAGE_SIZE - 1; i++)
-      eepromPageBuf[i] = 0;
-
-    eepromPageBuf[EEPROM_SENT_FLAG_OFFSET] = FLAG_NOT_SENT;
-
-    unsigned int dataAddr = (eepromWritePage + EEPROM_HEADER_SIZE) * EEPROM_PAGE_SIZE;
-
-    i2c_eeprom_write_page(EEPROM_ADDRESS, dataAddr, eepromPageBuf, EEPROM_PAGE_SIZE);
-    delay(50);
-
-    /* Update header bit */
-    byte headerByte = i2c_eeprom_read_byte(EEPROM_ADDRESS, (uint16_t)eepromWritePage / 8);
-
-    bitWrite(headerByte, eepromWritePage % 8, 1);
-    i2c_eeprom_write_byte(EEPROM_ADDRESS, (uint16_t)eepromWritePage / 8, headerByte);
-
-    eepromWritePage++;
-
-    if (eepromWritePage >= EEPROM_FLUSH_AFTER)
-      needFlushToSD = true;
-
-    if (needFlushToSD) {
-      if (dumpEEPROM()) {
-        resetEEPromHeader(EEPROM_ADDRESS);
-        eepromWritePage = 0;
-        needFlushToSD = false;
-      }
-    }
-
-    if (eepromWritePage > (EEPROM_MAX_PAGES - EEPROM_HEADER_SIZE))
-      eepromWritePage = 0;
-  }
+#ifdef SD_MODULE
+  logDailyRow(secondsSince2000, telemetryPayload.sensorReadings, tempCenti, telemetryPayload.status, FLAG_NOT_SENT);
+#endif
 
   error(1, LED_PIN);
 }
@@ -453,149 +272,6 @@ void sendSDPending() {
 #endif
 }
 
-uint16_t sendEEPROMPending() {
-#ifdef WIFI_MODULE
-  if (!wifiAvailable || !isEepromAvailable()) {
-    if (!wifiAvailable) {
-      Logln("WiFi unavailable, skipping EEPROM uploads.");
-    }
-    return 0;
-  }
-
-  uint16_t sentCount = 0;
-  uint16_t pageIndex = 0;
-  byte pageBuf[EEPROM_PAGE_SIZE];
-
-  while (pageIndex < (EEPROM_MAX_PAGES - EEPROM_HEADER_SIZE)) {
-    unsigned int addr = (pageIndex + EEPROM_HEADER_SIZE) * EEPROM_PAGE_SIZE;
-
-    i2c_eeprom_read_buffer(EEPROM_ADDRESS, addr, pageBuf, EEPROM_PAGE_SIZE);
-
-    if (pageBuf[EEPROM_SENT_FLAG_OFFSET] == FLAG_NOT_SENT) {
-      uint32_t seconds2000 = *((uint32_t*)&pageBuf[0]);
-      int16_t* readings = (int16_t*)&pageBuf[4];
-      int16_t temp = *((int16_t*)&pageBuf[4 + MAX_SENSOR_READINGS * 2]);
-      uint32_t status = *((uint32_t*)&pageBuf[4 + MAX_SENSOR_READINGS * 2 + 2]);
-
-      bool ok = publishToAquaControl(seconds2000, readings, temp, status);
-
-#ifdef DEBUG
-      Logf("   EEPROM page %u: %s\n", pageIndex, ok ? "sent" : "failed");
-#endif
-
-      if (ok) {
-        i2c_eeprom_write_byte(EEPROM_ADDRESS, addr + EEPROM_SENT_FLAG_OFFSET, FLAG_SENT);
-        sentCount++;
-      }
-    }
-
-    pageIndex++;
-  }
-  return sentCount;
-#else
-  return 0;
-#endif
-}
-
-
-/* --------------------------------------------------------------------------
- *  dumpEEPROM(): writes all marked pages to SD
- * -------------------------------------------------------------------------- */
-
-uint8_t dumpEEPROM() {
-#ifdef SD_MODULE
-  if (!isEepromAvailable()) {
-    return 1; // Nothing to dump
-  }
-
-  uint16_t i = 0, j = 0;
-  bool keep = true;
-  bool failure = false;
-  bool wroteAny = false;
-  const uint16_t headerBytes = EEPROM_HEADER_SIZE * EEPROM_PAGE_SIZE;
-
-  // Power ON sensor / I2C bus VCC pin before communicating with EEPROM
-#if defined(MAXBOTIX_PWR_PIN) && MAXBOTIX_PWR_PIN != -1
-  setPinActive(MAXBOTIX_PWR_PIN, MAXBOTIX_PWR_ACTIVE_HIGH);
-  delay(20);
-#elif defined(WATER_TEMP_PWR_PIN) && WATER_TEMP_PWR_PIN != -1
-  setPinActive(WATER_TEMP_PWR_PIN, WATER_TEMP_PWR_ACTIVE_HIGH);
-  delay(20);
-#endif
-
-#ifdef DEBUG
-  Serial.println(F("[dumpEEPROM] start"));
-  Serial.println(F("[dumpEEPROM] SD.begin()..."));
-#endif
-
-  if (!SD.begin(SdSpiConfig(SD_PIN_CS, SHARED_SPI, SD_SCK_MHZ(20), &sdSPI))) {
-#ifdef DEBUG
-    Serial.println(F("[dumpEEPROM] SD.begin() failed"));
-#endif
-    telemetryPayload.status = changeBit(telemetryPayload.status, STATUS_SD_CARD_BIT, true);
-
-    return 0;
-  }
-
-#ifdef DEBUG
-  Serial.println(F("[dumpEEPROM] SD.begin() ok"));
-#endif
-
-  while (keep && i < headerBytes) {
-    byte headerByte = i2c_eeprom_read_byte(EEPROM_ADDRESS, i);
-
-    for (j = 0; j < 8; j++) {
-      if ((headerByte >> j) & 1) {
-        uint8_t res = writeEEPROMLine(i * 8 + j);
-        if (res == 1) {
-          wroteAny = true;
-        } else if (res == 2) {
-          // Reached end of valid EEPROM data (empty page/zero timestamp) -> stop dump
-          // cleanly
-          keep = false;
-          break;
-        } else {
-          // res == 0: SD card file open or write error
-          failure = true;
-          keep = false;
-          break;
-        }
-      } else {
-#ifdef DEBUG
-        Serial.println(F("[dumpEEPROM] no more pending pages"));
-#endif
-        keep = false;
-        break;
-      }
-    }
-
-    i++;
-  }
-
-#ifdef DEBUG
-  if (keep && i >= headerBytes) {
-    Serial.println(F("[dumpEEPROM] reached end of header bitmap"));
-  }
-#endif
-
-  if (!failure && wroteAny) {
-    error(1, LED_PIN);
-  }
-
-  if (fileOpen) {
-    sdFile.close();
-    fileOpen = false;
-  }
-
-#ifdef DEBUG
-  Serial.println(F("[dumpEEPROM] end"));
-#endif
-
-  return failure ? 0 : 1;
-#else
-  return 1;
-#endif
-}
 
 /* --------------------------------------------------------------------------
  *  CSV filename: /YYYYMMDD.CSV (no pending _P prefix)
@@ -634,72 +310,25 @@ static void writeCsvHeader(SdFile& file) {
 }
 #endif
 
-/**
- * @brief Writes one EEPROM row into the proper daily CSV file.
- *
- * CSV format: dateStr, seconds2000, reading[0..N-1], temperature, status, sent
- */
-uint8_t writeEEPROMLine(uint16_t n) {
 #ifdef SD_MODULE
-  byte pageBuf[EEPROM_PAGE_SIZE];
-  RtcDateTime ts;
-  /*
-  #ifdef DEBUG
-    Serial.print(F("[writeEEPROMLine] page "));
-    Serial.println(n);
-  #endif
-  */
-  i2c_eeprom_read_buffer(EEPROM_ADDRESS, (n + EEPROM_HEADER_SIZE) * EEPROM_PAGE_SIZE, pageBuf,
-                         EEPROM_PAGE_SIZE);
-
-  uint32_t seconds2000 = ((uint32_t*)pageBuf)[0];
-
-  RtcDateTime now = rtc.GetDateTime();
-  uint32_t nowSeconds2000 = now.TotalSeconds();
-
-  if (seconds2000 == 0 || seconds2000 > (nowSeconds2000 + 86400UL)) {
-#ifdef DEBUG
-    Serial.print(F("[writeEEPROMLine] invalid ts raw="));
-    Serial.print(seconds2000);
-    Serial.println(F(" -> stop dump"));
-#endif
-    return 2; // 2 = end of valid EEPROM records (not a failure)
+/**
+ * @brief Appends a single measurement row into the daily CSV file (/YYYYMMDD.CSV).
+ */
+void logDailyRow(uint32_t seconds2000, const int16_t* readings, int16_t temp, uint32_t status, uint8_t sentFlag) {
+  if (!SD.begin(SdSpiConfig(SD_PIN_CS, SHARED_SPI, SD_SCK_MHZ(20), &sdSPI))) {
+    Logln("[SD] begin failed for daily log");
+    return;
   }
 
-  ts = RtcDateTime(seconds2000);
-
-  int16_t* readings = (int16_t*)&pageBuf[4];
-
-  uint32_t status = ((uint32_t)(uint16_t)readings[MAX_SENSOR_READINGS + 1]) |
-                    (((uint32_t)(uint16_t)readings[MAX_SENSOR_READINGS + 2]) << 16);
-
-  uint8_t sentFlag = (pageBuf[EEPROM_SENT_FLAG_OFFSET] == FLAG_SENT);
-
+  RtcDateTime ts(seconds2000);
   static uint32_t dayCache = 40;
-  if (!fileOpen) {
-    getFilename(ts);
-#ifdef DEBUG
-    Serial.print(F("[writeEEPROMLine] ts = "));
-    formatDateTime(ts);
-    Serial.println(dateStr);
-    Serial.print(F("[writeEEPROMLine] opening "));
-    Serial.println(csvFilename);
-#endif
-    fileOpen = sdFile.open(csvFilename, O_CREAT | O_WRITE | O_APPEND);
-    if (fileOpen && sdFile.fileSize() == 0) {
-      writeCsvHeader(sdFile);
+
+  if (!fileOpen || dayCache != ts.Day()) {
+    if (fileOpen) {
+      sdFile.close();
+      fileOpen = false;
     }
-    dayCache = ts.Day();
-  } else if (dayCache != ts.Day()) {
     getFilename(ts);
-#ifdef DEBUG
-    Serial.print(F("[writeEEPROMLine] ts = "));
-    formatDateTime(ts);
-    Serial.println(dateStr);
-    Serial.print(F("[writeEEPROMLine] day change, reopening "));
-    Serial.println(csvFilename);
-#endif
-    sdFile.close();
     fileOpen = sdFile.open(csvFilename, O_CREAT | O_WRITE | O_APPEND);
     if (fileOpen && sdFile.fileSize() == 0) {
       writeCsvHeader(sdFile);
@@ -708,10 +337,8 @@ uint8_t writeEEPROMLine(uint16_t n) {
   }
 
   if (!fileOpen) {
-#ifdef DEBUG
-    Serial.println(F("[writeEEPROMLine] file open failed"));
-#endif
-    return 0;
+    Logln("[SD] Failed to open daily CSV file");
+    return;
   }
 
   formatDateTime(ts);
@@ -725,7 +352,7 @@ uint8_t writeEEPROMLine(uint16_t n) {
   }
 
   sdFile.print(", ");
-  sdFile.print(readings[MAX_SENSOR_READINGS]);
+  sdFile.print(temp);
 
   sdFile.print(", ");
   sdFile.print(status);
@@ -735,34 +362,9 @@ uint8_t writeEEPROMLine(uint16_t n) {
 
   sdFile.println();
   sdFile.flush();
-  return 1;
-#else
-  return 0;
+}
 #endif
-}
 
-/* --------------------------------------------------------------------------
- *  markEepromSentByTimestamp()
- * -------------------------------------------------------------------------- */
-
-bool markEepromSentByTimestamp(uint32_t secondsSince2000) {
-  byte pageBuf[EEPROM_PAGE_SIZE];
-
-  for (uint16_t page = 0; page < (EEPROM_MAX_PAGES - EEPROM_HEADER_SIZE); page++) {
-    unsigned int addr = (page + EEPROM_HEADER_SIZE) * EEPROM_PAGE_SIZE;
-
-    i2c_eeprom_read_buffer(EEPROM_ADDRESS, addr, pageBuf, EEPROM_PAGE_SIZE);
-    uint32_t ts = ((uint32_t*)pageBuf)[0];
-
-    if (ts == secondsSince2000) {
-      if (pageBuf[EEPROM_SENT_FLAG_OFFSET] == FLAG_NOT_SENT) {
-        i2c_eeprom_write_byte(EEPROM_ADDRESS, addr + EEPROM_SENT_FLAG_OFFSET, FLAG_SENT);
-      }
-      return true;
-    }
-  }
-  return false;
-}
 
 /* --------------------------------------------------------------------------
  *  csvLineParse() — CSV field extraction
@@ -859,7 +461,6 @@ bool processCsvFile(const char* filename) {
       if (wasPending) {
         if (publishToAquaControl(sec2000, csvReadings, csvTemp, csvStatus)) {
           newLine = markLineSent(line);
-          markEepromSentByTimestamp(sec2000);
         } else {
           pendingLeft = true;
         }
@@ -885,7 +486,6 @@ bool processCsvFile(const char* filename) {
     if (wasPending) {
       if (publishToAquaControl(sec2000, csvReadings, csvTemp, csvStatus)) {
         newLine = markLineSent(line);
-        markEepromSentByTimestamp(sec2000);
       } else {
         pendingLeft = true;
       }

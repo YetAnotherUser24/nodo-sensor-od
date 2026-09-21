@@ -1,13 +1,12 @@
 /**
  * @file measurement_storage.h
- * @brief Measurement acquisition, EEPROM buffering, SD batching, and upload helpers.
+ * @brief Measurement acquisition, SD logging, and upload helpers.
  *
  * This module handles:
  *  - Sampling sensor and temperature.
- *  - Preparing compact EEPROM records.
- *  - Dumping EEPROM pages to SD as CSV.
- *  - Processing pending CSV files and converting to JSON.
- *  - Uploading telemetry to AquaControl via WiFi HTTPS (batch and non-batch).
+ *  - Appending daily measurement records directly to SD (/YYYYMMDD.CSV).
+ *  - Processing pending CSV files and uploading telemetry to AquaControl via HTTPS.
+ *  - Experiment CSV logging (/EXP_XX.CSV).
  */
 
 #pragma once
@@ -23,22 +22,6 @@
 String markLineSent(const String& line);
 
 /**
- * @brief Returns number of free pages in external I2C EEPROM.
- */
-uint16_t getEEPROMFreePages();
-
-/**
- * @brief Clears external I2C EEPROM header and resets page write pointer.
- */
-void clearEEPROM();
-
-/**
- * @brief Logs EEPROM storage status or dumps an unpacked page record.
- * @param pageIndex Page number to peek (0 to EEPROM_MAX_PAGES - EEPROM_HEADER_SIZE - 1), or -1 for status.
- */
-void peekEEPROM(int16_t pageIndex = -1);
-
-/**
  * @brief Returns available SD storage in megabytes.
  */
 uint32_t getSDFreeMB();
@@ -49,13 +32,13 @@ uint32_t getSDFreeMB();
 void normalizeConfig();
 
 /**
- * @brief Performs full measurement cycle and stores result in EEPROM buffer.
+ * @brief Performs full measurement cycle and logs result.
  *
  * Includes:
  *  - Temperature reading from RTC
  *  - Sensor sampling via sensor engine
  *  - Status flags
- *  - EEPROM page packing
+ *  - Direct append to daily SD CSV (/YYYYMMDD.CSV) if SD present
  */
 void takeMeasurement();
 
@@ -65,35 +48,18 @@ void takeMeasurement();
 void sendSDPending();
 
 /**
- * @brief Sends all unsent EEPROM pages to AquaControl.
- * @return Number of pages successfully sent.
- */
-uint16_t sendEEPROMPending();
-
-
-/**
- * @brief Dumps all marked EEPROM pages to SD in CSV format.
- *
- * @return 1 on success, 0 on failure.
- */
-uint8_t dumpEEPROM();
-
-/**
  * @brief Builds a filename of form /YYYYMMDD.CSV.
  */
 void getFilename(const RtcDateTime& ts);
 
+#ifdef SD_MODULE
 /**
- * @brief Writes one EEPROM page (index n) into the appropriate CSV file.
- *
- * @param n Page index relative to data section (not absolute address).
+ * @brief Appends a single measurement row into the daily CSV file (/YYYYMMDD.CSV).
  */
-uint8_t writeEEPROMLine(uint16_t n);
-
-/**
- * @brief Marks the EEPROM page that corresponds to the given timestamp as sent.
- */
-bool markEepromSentByTimestamp(uint32_t secondsSince2000);
+void logDailyRow(uint32_t seconds2000, const int16_t* readings, int16_t temp, uint32_t status, uint8_t sentFlag);
+#else
+static inline void logDailyRow(uint32_t, const int16_t*, int16_t, uint32_t, uint8_t) {}
+#endif
 
 /**
  * @brief Parses one CSV line and extracts fields for upload.

@@ -23,7 +23,6 @@
 #include <esp_bt.h>
 
 #include "config.h"
-#include "error_sensor.h"
 #include "n_logger_config.h"
 #include "board.h"
 #include "measurement_storage.h"
@@ -351,22 +350,6 @@ void processCommand(const String& cmdIn) {
     bleLedBlinks = 1;
   }
 
-  /* --------------------------- CLEAR EEPROM ----------------------------- */
-  else if (cmd == "CLEAR_EEPROM" || cmd == "CLEAR" || cmd == "C") {
-    clearEEPROM();
-    bleLedBlinks = 1;
-  }
-
-  /* ---------------------------- PEEK EEPROM ----------------------------- */
-  else if (len >= 4 && strncmp(c, "PEEK", 4) == 0) {
-    if (len > 5 && c[4] == '-') {
-      int page = atoi(c + 5);
-      peekEEPROM(page);
-    } else {
-      peekEEPROM(-1);
-    }
-    bleLedBlinks = 1;
-  }
 
   /* ------------------------------ DATA --------------------------------- */
   else if (cmd == "DATA") {

@@ -46,32 +46,8 @@
 #endif
 
 /* --------------------------------------------------------------------------
- *  EEPROM Geometry (always included)
+ *  Telemetry & Storage Flags
  * -------------------------------------------------------------------------- */
-
-#ifndef EEPROM_ADDRESS
-#define EEPROM_ADDRESS 0x50
-#endif
-
-#ifndef EEPROM_PAGE_SIZE
-#define EEPROM_PAGE_SIZE 32
-#endif
-
-#ifndef EEPROM_HEADER_SIZE
-#define EEPROM_HEADER_SIZE 8
-#endif
-
-#ifndef EEPROM_MAX_PAGES
-#define EEPROM_MAX_PAGES 2048
-#endif
-
-#ifndef EEPROM_FLUSH_AFTER
-#define EEPROM_FLUSH_AFTER 288
-#endif
-
-#ifndef EEPROM_SENT_FLAG_OFFSET
-#define EEPROM_SENT_FLAG_OFFSET (EEPROM_PAGE_SIZE - 1)
-#endif
 
 #define FLAG_NOT_SENT 0x00
 #define FLAG_SENT 0x01
@@ -248,36 +224,6 @@ struct TelemetryPayload {
 
 #ifndef I2C_SCL_PIN
 #define I2C_SCL_PIN 22
-#endif
-
-/* --------------------------------------------------------------------------
- *  EEPROM I2C Bus Selection
- *
- *  By default, the external I2C EEPROM shares the main Wire bus (SDA=21/SCL=22).
- *  Some hardware revisions (e.g. LILYGO T-A7670 GPRS boards) have the EEPROM's
- *  SDA/SCL traces swapped on the PCB. For those boards, define:
- *
- *      -DI2C_EEPROM_SDA_PIN=22
- *      -DI2C_EEPROM_SCL_PIN=21
- *
- *  When both pins are set to valid GPIO numbers (not -1), a second I2C bus
- *  (Wire1) is activated for the EEPROM with the specified (reversed) pin mapping.
- *  The main Wire bus remains unchanged for the RTC and any other I2C peripherals.
- * -------------------------------------------------------------------------- */
-
-#ifndef I2C_EEPROM_SDA_PIN
-#define I2C_EEPROM_SDA_PIN -1
-#endif
-
-#ifndef I2C_EEPROM_SCL_PIN
-#define I2C_EEPROM_SCL_PIN -1
-#endif
-
-#if I2C_EEPROM_SDA_PIN != -1 && I2C_EEPROM_SCL_PIN != -1
-#define EEPROM_USE_WIRE1
-#define EEPROM_WIRE Wire1
-#else
-#define EEPROM_WIRE Wire
 #endif
 
 /* --------------------------------------------------------------------------

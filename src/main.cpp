@@ -11,10 +11,7 @@
 
 #include "ble_manager.h"
 #include "board.h"
-#include "eeprom_i2c.h"
-#include "error_sensor.h"
 #include "measurement_storage.h"
-#include "modem_mqtt.h"
 #include "n_logger_config.h"
 #include "oled_display.h"
 #include "power_sleep.h"
@@ -40,9 +37,6 @@
 #include <string.h>
 #include <ArduinoJson.h>
 
-#ifdef GPRS_MODULE
-#include <WiFi.h>
-#endif
 
 #include "config.h"
 
@@ -61,11 +55,7 @@
 #include <SdFat.h>
 #endif
 
-#ifdef GPRS_MODULE
-#include <ESP_SSLClient.h>
-#include <PubSubClient.h>
-#include <TinyGsmClient.h>
-#endif
+
 
 #ifdef WIFI_MODULE
 #include <WiFi.h>
@@ -82,43 +72,6 @@ uint64_t device_ID = ESP.getEfuseMac();
 #define SerialMon Serial
 #define SerialAT Serial1
 
-/* --------------------------- Modem/Network ------------------------- */
-
-#ifdef GPRS_MODULE
-#define TINY_GSM_DEBUG SerialMon
-#define TINY_GSM_USE_GPRS true
-#define TINY_GSM_USE_WIFI false
-
-#define GSM_PIN ""
-
-#define TINY_GSM_RX_BUFFER 1024
-#define MODEM_POWERON_PULSE_WIDTH_MS 100
-
-#if TINY_GSM_USE_GPRS && not defined TINY_GSM_MODEM_HAS_GPRS
-#undef TINY_GSM_USE_GPRS
-#undef TINY_GSM_USE_WIFI
-#define TINY_GSM_USE_GPRS false
-#define TINY_GSM_USE_WIFI true
-#endif
-
-#if TINY_GSM_USE_WIFI && not defined TINY_GSM_MODEM_HAS_WIFI
-#undef TINY_GSM_USE_GPRS
-#undef TINY_GSM_USE_WIFI
-#define TINY_GSM_USE_GPRS true
-#define TINY_GSM_USE_WIFI false
-#endif
-
-#ifdef DUMP_AT_COMMANDS
-#include <StreamDebugger.h>
-StreamDebugger debugger(SerialAT, SerialMon);
-TinyGsm modem(debugger);
-#else
-TinyGsm modem(SerialAT);
-#endif
-
-TinyGsmClient gsmClient(modem);
-PubSubClient mqtt(gsmClient);
-#endif /* GPRS_MODULE */
 
 /* ---------------------------- SD ---------------------------------- */
 
@@ -140,9 +93,7 @@ char dateStr[20];
 /* ----------------------------- Globals ----------------------------- */
 
 RTC_DATA_ATTR int bootCount = 0;
-RTC_DATA_ATTR uint16_t eepromWritePage = 0;
 RTC_DATA_ATTR uint8_t failedTransmissionCount = 0;
-RTC_DATA_ATTR bool forceModemReset = false;
 
 bool measureDone = false;
 bool bluetoothDone = false;
@@ -157,9 +108,6 @@ bool x = false;
 
 volatile uint16_t interruptCount = 0;
 volatile bool interruptFlag = false;
-
-byte eepromPageBuf[EEPROM_PAGE_SIZE];
-bool needFlushToSD = false;
 
 char csvFilename[24];
 bool fileOpen = false;
@@ -377,9 +325,6 @@ void setup() {
   }
 #endif
 
-#ifdef EEPROM_USE_WIRE1
-  Wire1.begin(I2C_EEPROM_SDA_PIN, I2C_EEPROM_SCL_PIN);
-#endif
 
   // Load config from EEPROM
   EEPROM.begin(sizeof(ModuleConfig));
@@ -425,9 +370,6 @@ void setup() {
 #ifdef SD_MODULE
   Serial.print("SD");
 #endif
-#ifdef GPRS_MODULE
-  Serial.print("GPRS");
-#endif
   Serial.printf(" v%d.%d\n", CODE_VERSION >> 4, CODE_VERSION & 0x0F);
 
   Serial.print(F("Sensor type: "));
@@ -441,11 +383,6 @@ void setup() {
   Serial.println("CURRENT CONFIGURATION:");
   Serial.print("(Measure time: ");
   Serial.print(moduleCfg.measure_time);
-
-#ifdef GPRS_MODULE
-  Serial.print(" | GPRS time: ");
-  Serial.print(moduleCfg.GPRS_time);
-#endif
 
   Serial.println(")\n");
 #endif
@@ -462,28 +399,10 @@ void setup() {
     }
 #endif
 
-    // Optional daily flush at 00:00 (only when SD and EEPROM are present)
-#ifdef SD_MODULE
-    if (isEepromAvailable() && rtcNow.Hour() == 0 && rtcNow.Minute() == 0) {
-      if (dumpEEPROM()) {
-        resetEEPromHeader(EEPROM_ADDRESS);
-        eepromWritePage = 0;
-#ifdef DEBUG
-        Logln("- EEPROM flushed.");
-#endif
-      } else {
-#ifdef DEBUG
-        Logln("Failed to flush EEPROM. SD card missing? Continuing anyway.");
-#endif
-        error(3, LED_PIN);
-      }
-    }
-#endif
-
     // Measurement window
     if (moduleCfg.measure_time > 0 && (rtcNow.Minute() % moduleCfg.measure_time == 0)) {
 #ifdef DEBUG
-      Logln("SAVE MEASURE LEVEL IN EEPROM");
+      Logln("TAKING SCHEDULED MEASUREMENT");
 #endif
       esp_task_wdt_reset();
       takeMeasurement();
@@ -522,12 +441,9 @@ void setup() {
         failedTransmissionCount = 0;
 
         sendSDPending();
-        uint16_t sentPages = sendEEPROMPending();
 #if defined(SENSOR_VIRTUAL)
-        if (sentPages == 0) {
-          publishToAquaControl(rtcNow.TotalSeconds(), telemetryPayload.sensorReadings,
-                               telemetryPayload.temperature, telemetryPayload.status);
-        }
+        publishToAquaControl(rtcNow.TotalSeconds(), telemetryPayload.sensorReadings,
+                             telemetryPayload.temperature, telemetryPayload.status);
 #endif
 
         // ponytail: No RPC replacement needed. BLE commands cover T-x-y-z and D-YYYY-MM-DD.
@@ -556,35 +472,8 @@ void setup() {
     firstRun = true;
 
 #if !defined(WEB_MASTER_MODE)
-#ifdef SD_MODULE
-    if (isEepromAvailable()) {
-#ifdef DEBUG
-      uint16_t freePages = getEEPROMFreePages();
-      uint16_t totalPages = EEPROM_MAX_PAGES - EEPROM_HEADER_SIZE;
-      Logf("FLUSHING EEPROM TO SD CARD (Used: %u / %u pages)...\n", totalPages - freePages,
-           totalPages);
-#endif
-
-      if (dumpEEPROM()) {
-        resetEEPromHeader(EEPROM_ADDRESS);
-#ifdef DEBUG
-        Logln("- EEPROM flushed.");
-#endif
-      } else {
-#ifdef DEBUG
-        Logln("Failed to flush EEPROM. SD card missing? Continuing anyway.");
-#endif
-        error(3, LED_PIN);
-      }
-    }
-#endif
-
     esp_task_wdt_reset();
     delay(1000);
-
-#if defined(DEBUG) && defined(GPRS_MODULE)
-    Logln("- Connecting to Internet: ");
-#endif
 
     Logln("First run...");
     esp_task_wdt_reset();
@@ -599,12 +488,9 @@ void setup() {
       failedTransmissionCount = 0;
 
       sendSDPending();
-      uint16_t sentPages = sendEEPROMPending();
 #if defined(SENSOR_VIRTUAL)
-      if (sentPages == 0) {
-        publishToAquaControl(rtcNow.TotalSeconds(), telemetryPayload.sensorReadings,
-                             telemetryPayload.temperature, telemetryPayload.status);
-      }
+      publishToAquaControl(rtcNow.TotalSeconds(), telemetryPayload.sensorReadings,
+                           telemetryPayload.temperature, telemetryPayload.status);
 #endif
     } else {
       failedTransmissionCount++;
@@ -619,7 +505,7 @@ void setup() {
 #endif /* WIFI_MODULE */
 
 #else // WEB_MASTER_MODE
-    Logln("[MASTER] Web Master Mode: Skipping offline EEPROM flush & initial forced sample.");
+    Logln("[MASTER] Web Master Mode: Skipping initial forced sample.");
 #ifdef WIFI_MODULE
     wifiAvailable = wifiConnect();
     esp_task_wdt_reset();
@@ -640,17 +526,6 @@ void setup() {
 #endif
 #endif
 
-#ifdef GPRS_MODULE
-  if (gprsDone) {
-    // Final flush before sleep (power optimized)
-    for (int i = 0; i < 5; i++) {
-      mqtt.loop();
-      delay(100);
-    }
-    sleepA7670();
-    esp_task_wdt_reset();
-  }
-#endif
 
 #if !defined(DISABLE_BLE) && !defined(WEB_MASTER_MODE)
   if (firstRun && !experimentActive && !webMonitorActive) {

@@ -186,7 +186,39 @@ bool ModbusRtu::sendRequestAndCollectResponse(const uint8_t* request, size_t req
   setReceiveMode();
   delayMicroseconds(config_.rxTurnaroundUs);
 
-  return collectResponse(response, responseCapacity, responseLength);
+  // If the transceiver echoes transmitted bytes into RX (common in unmuted RS-485 transceivers),
+  // strip out any initial bytes matching the transmitted request frame.
+  if (serial_ != nullptr && serial_->available() > 0) {
+    size_t echoCount = 0;
+    while (serial_->available() > 0 && echoCount < requestLength) {
+      if (serial_->peek() == request[echoCount]) {
+        (void)serial_->read();
+        echoCount++;
+      } else {
+        break;
+      }
+    }
+  }
+
+  bool ok = collectResponse(response, responseCapacity, responseLength);
+  if (!ok) {
+    return false;
+  }
+
+  // If collectResponse captured an echo of the request frame:
+  // 1. If response matches request exactly: it was only the echo. Discard it and wait for slave reply.
+  if (responseLength == requestLength && memcmp(response, request, requestLength) == 0) {
+    return collectResponse(response, responseCapacity, responseLength);
+  }
+
+  // 2. If response begins with the echo followed by more bytes (the slave reply):
+  if (responseLength > requestLength && memcmp(response, request, requestLength) == 0) {
+    size_t remaining = responseLength - requestLength;
+    memmove(response, response + requestLength, remaining);
+    responseLength = remaining;
+  }
+
+  return responseLength > 0U;
 }
 
 void ModbusRtu::buildRequestFrame(uint8_t slaveId, uint8_t functionCode, uint16_t firstValue,
@@ -286,7 +318,7 @@ ModbusRtu::ReadResult ModbusRtu::readRegisters(uint8_t slaveId, uint8_t function
     return result;
   }
 
-  if ((byteCount % BytePairSize) != 0U) {
+  if (byteCount == 0 || (byteCount % BytePairSize) != 0U) {
     result.error = "invalid byte count";
     return result;
   }

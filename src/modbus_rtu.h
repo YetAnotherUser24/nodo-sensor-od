@@ -92,6 +92,8 @@ private:
     uint8_t responderId = 0U;
     uint8_t exceptionCode = 0U;
     const char* error = "unknown";
+    size_t frameOffset = 0U;
+    size_t frameLength = 0U;
   };
 
   void applyDirection(bool transmit);

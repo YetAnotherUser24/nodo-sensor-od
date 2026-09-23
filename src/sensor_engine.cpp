@@ -104,7 +104,7 @@ static int16_t odReadAll(int16_t* values) {
   cfg.txEnableGuardUs = 250;
   cfg.txDisableGuardUs = 250;
   cfg.interFrameGapMs = 4;
-  cfg.rxTurnaroundUs = 0;
+  cfg.rxTurnaroundUs = 200;
   modbus.configure(cfg);
   modbus.begin(OD_BAUD, OD_RX_PIN, OD_TX_PIN);
 

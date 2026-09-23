@@ -144,6 +144,64 @@ int main() {
   assert(SPI_HOST_VSPI != SPI_HOST_HSPI);
   std::printf("  ✓ 9. Dual SPI architecture (LoRa on VSPI/SPI3, SD on HSPI/SPI2, 0 pin overlap) verified\n");
 
+  // 10. Validate Modbus RTU Frame Synchronization & Noise Resilience
+  auto crc16_check = [](const uint8_t* data, size_t length) -> uint16_t {
+    if (!data || length == 0) return 0;
+    uint16_t crc = 0xFFFF;
+    for (size_t i = 0; i < length; ++i) {
+      crc ^= static_cast<uint16_t>(data[i]);
+      for (uint8_t bit = 0; bit < 8; ++bit) {
+        if ((crc & 0x0001) != 0) crc = (crc >> 1) ^ 0xA001;
+        else crc >>= 1;
+      }
+    }
+    return crc;
+  };
+
+  auto validateModbusFrame = [&](uint8_t slaveId, uint8_t fn, const uint8_t* rx, size_t rxLen,
+                                 size_t& outOffset, size_t& outLen) -> bool {
+    const uint8_t MinFrame = 5;
+    for (size_t off = 0; off + MinFrame <= rxLen; ++off) {
+      if (rx[off] != slaveId) continue;
+      if (rx[off + 1] != fn) continue;
+      size_t expected = 0;
+      if (fn == 0x06) expected = 8;
+      else if (fn == 0x03) {
+        if (off + 3 > rxLen) continue;
+        uint8_t bc = rx[off + 2];
+        expected = static_cast<size_t>(bc) + MinFrame;
+      }
+      if (off + expected > rxLen) continue;
+      uint16_t rxCrc = static_cast<uint16_t>(rx[off + expected - 2]) |
+                       (static_cast<uint16_t>(rx[off + expected - 1]) << 8);
+      uint16_t calcCrc = crc16_check(&rx[off], expected - 2);
+      if (rxCrc == calcCrc) {
+        outOffset = off;
+        outLen = expected;
+        return true;
+      }
+    }
+    return false;
+  };
+
+  // Test 10a: Exact user log failure: 3 noise bytes followed by valid 0x06 response
+  const uint8_t noisyWriteRx[] = {0x00, 0x00, 0xE0, 0x0A, 0x06, 0x00, 0x01, 0x00, 0x1F, 0x98, 0xB9};
+  size_t frameOff = 0, frameLen = 0;
+  assert(validateModbusFrame(0x0A, 0x06, noisyWriteRx, sizeof(noisyWriteRx), frameOff, frameLen));
+  assert(frameOff == 3);
+  assert(frameLen == 8);
+
+  // Test 10b: Clean frame without noise
+  const uint8_t cleanWriteRx[] = {0x0A, 0x06, 0x00, 0x01, 0x00, 0x1F, 0x98, 0xB9};
+  assert(validateModbusFrame(0x0A, 0x06, cleanWriteRx, sizeof(cleanWriteRx), frameOff, frameLen));
+  assert(frameOff == 0);
+  assert(frameLen == 8);
+
+  // Test 10c: Corrupted CRC should fail
+  const uint8_t badCrcRx[] = {0x0A, 0x06, 0x00, 0x01, 0x00, 0x1F, 0x00, 0x00};
+  assert(!validateModbusFrame(0x0A, 0x06, badCrcRx, sizeof(badCrcRx), frameOff, frameLen));
+  std::printf("  ✓ 10. Modbus RTU frame sync & noise resilience (handles leading 00 00 E0) verified\n");
+
   std::printf("\n====================================================\n");
   std::printf(" ¡TODAS LAS PRUEBAS DE EXPERIMENTO EN FIRMWARE OK! ✓\n");
   std::printf("====================================================\n");

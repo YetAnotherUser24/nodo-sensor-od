@@ -544,6 +544,7 @@ inline void setPinInactive(int pin, bool activeHigh, bool holdInSleep = false) {
  * @brief Displays a repeated blink pattern to indicate error codes.
  */
 inline void error(int errorNum, int errPin = LED_PIN) {
+  if (errPin < 0) return;
   for (int i = 0; i < errorNum; i++) {
     digitalWrite(errPin, HIGH);
     delay(150);
@@ -561,8 +562,10 @@ inline void error(int errorNum, int errPin = LED_PIN) {
  * Call at the top of setup().
  */
 inline void boardInit() {
-  pinMode(LED_PIN, OUTPUT);
-  digitalWrite(LED_PIN, LOW);
+  if (LED_PIN >= 0) {
+    pinMode(LED_PIN, OUTPUT);
+    digitalWrite(LED_PIN, LOW);
+  }
 
 #ifdef BOARD_POWERON_PIN
   setPinInactive(BOARD_POWERON_PIN, true);

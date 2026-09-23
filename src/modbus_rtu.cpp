@@ -1,5 +1,6 @@
 #include "modbus_rtu.h"
 #include <driver/gpio.h>
+#include "log.h"
 
 namespace modbus_rtu {
 
@@ -8,10 +9,13 @@ namespace {
 // Protocol and frame-layout constants kept local to this translation unit.
 
 constexpr uint8_t ExceptionMask = static_cast<uint8_t>(0x80U);
+constexpr uint8_t ReadHoldingRegistersFn = static_cast<uint8_t>(0x03U);
+constexpr uint8_t ReadInputRegistersFn = static_cast<uint8_t>(0x04U);
 constexpr uint8_t WriteSingleRegisterFn = static_cast<uint8_t>(0x06U);
 constexpr uint8_t RequestFrameBytes = static_cast<uint8_t>(8U);
 constexpr uint8_t RequestPayloadBytes = static_cast<uint8_t>(6U);
 constexpr uint8_t MinResponseFrameBytes = static_cast<uint8_t>(5U);
+constexpr uint8_t ExceptionResponseFrameBytes = static_cast<uint8_t>(5U);
 constexpr uint8_t WriteResponseFrameBytes = static_cast<uint8_t>(8U);
 constexpr uint8_t ResponseBufferBytes = static_cast<uint8_t>(64U);
 constexpr uint8_t BytePairSize = static_cast<uint8_t>(2U);
@@ -20,6 +24,25 @@ constexpr uint16_t CrcInit = static_cast<uint16_t>(0xFFFFU);
 constexpr uint16_t CrcPolynomial = static_cast<uint16_t>(0xA001U);
 constexpr uint16_t CrcLsbMask = static_cast<uint16_t>(0x0001U);
 constexpr uint8_t BitsPerByte = static_cast<uint8_t>(8U);
+
+#ifdef DEBUG
+static void logHexDump(const char* label, const uint8_t* tx, size_t txLen, const uint8_t* rx, size_t rxLen, const char* errorMsg) {
+  char txBuf[48] = {0};
+  char rxBuf[96] = {0};
+  size_t txOff = 0;
+  for (size_t i = 0; i < txLen && txOff + 4 < sizeof(txBuf); ++i) {
+    txOff += snprintf(txBuf + txOff, sizeof(txBuf) - txOff, "%02X ", tx[i]);
+  }
+  size_t rxOff = 0;
+  for (size_t i = 0; i < rxLen && rxOff + 4 < sizeof(rxBuf); ++i) {
+    rxOff += snprintf(rxBuf + rxOff, sizeof(rxBuf) - rxOff, "%02X ", rx[i]);
+  }
+  Logf("[MODBUS][RAW] %s err=%s | TX(%u): %s| RX(%u): %s\n",
+       label, errorMsg ? errorMsg : "none",
+       (unsigned int)txLen, txBuf,
+       (unsigned int)rxLen, rxLen > 0 ? rxBuf : "<NONE>");
+}
+#endif
 
 } // namespace
 
@@ -184,41 +207,14 @@ bool ModbusRtu::sendRequestAndCollectResponse(const uint8_t* request, size_t req
   }
   delayMicroseconds(config_.txDisableGuardUs);
   setReceiveMode();
-  delayMicroseconds(config_.rxTurnaroundUs);
-
-  // If the transceiver echoes transmitted bytes into RX (common in unmuted RS-485 transceivers),
-  // strip out any initial bytes matching the transmitted request frame.
-  if (serial_ != nullptr && serial_->available() > 0) {
-    size_t echoCount = 0;
-    while (serial_->available() > 0 && echoCount < requestLength) {
-      if (serial_->peek() == request[echoCount]) {
-        (void)serial_->read();
-        echoCount++;
-      } else {
-        break;
-      }
-    }
+  if (config_.rxTurnaroundUs > 0) {
+    delayMicroseconds(config_.rxTurnaroundUs);
   }
 
-  bool ok = collectResponse(response, responseCapacity, responseLength);
-  if (!ok) {
-    return false;
-  }
+  // Clear any TX echo, direction switching transients, or line float noise before awaiting slave reply
+  clearRxBuffer();
 
-  // If collectResponse captured an echo of the request frame:
-  // 1. If response matches request exactly: it was only the echo. Discard it and wait for slave reply.
-  if (responseLength == requestLength && memcmp(response, request, requestLength) == 0) {
-    return collectResponse(response, responseCapacity, responseLength);
-  }
-
-  // 2. If response begins with the echo followed by more bytes (the slave reply):
-  if (responseLength > requestLength && memcmp(response, request, requestLength) == 0) {
-    size_t remaining = responseLength - requestLength;
-    memmove(response, response + requestLength, remaining);
-    responseLength = remaining;
-  }
-
-  return responseLength > 0U;
+  return collectResponse(response, responseCapacity, responseLength);
 }
 
 void ModbusRtu::buildRequestFrame(uint8_t slaveId, uint8_t functionCode, uint16_t firstValue,
@@ -244,36 +240,67 @@ ModbusRtu::ResponseCheck ModbusRtu::validateResponse(uint8_t slaveId, uint8_t fu
     return check;
   }
 
+  // Scan for a valid Modbus RTU frame within response to tolerate leading noise/transients
+  for (size_t offset = 0; offset + MinResponseFrameBytes <= responseLen; ++offset) {
+    uint8_t candidateId = response[offset];
+    if (!isBroadcastAddress(slaveId) && candidateId != slaveId) {
+      continue;
+    }
+
+    uint8_t candidateFn = response[offset + 1];
+    bool isEx = (candidateFn == static_cast<uint8_t>(functionCode | ExceptionMask));
+    bool isFn = (candidateFn == functionCode);
+    if (!isEx && !isFn) {
+      continue;
+    }
+
+    size_t expectedFrameLen = 0;
+    if (isEx) {
+      expectedFrameLen = ExceptionResponseFrameBytes;
+    } else if (functionCode == WriteSingleRegisterFn) {
+      expectedFrameLen = WriteResponseFrameBytes;
+    } else if (functionCode == ReadHoldingRegistersFn || functionCode == ReadInputRegistersFn) {
+      if (offset + 3 > responseLen) continue;
+      uint8_t byteCount = response[offset + 2];
+      if (byteCount == 0 || (byteCount % BytePairSize) != 0) continue;
+      expectedFrameLen = static_cast<size_t>(byteCount) + MinResponseFrameBytes;
+    } else {
+      expectedFrameLen = responseLen - offset;
+    }
+
+    if (offset + expectedFrameLen > responseLen) {
+      continue;
+    }
+
+    uint16_t rxCrc = static_cast<uint16_t>(response[offset + expectedFrameLen - 2]) |
+                     (static_cast<uint16_t>(response[offset + expectedFrameLen - 1]) << 8);
+    uint16_t calcCrc = crc16(&response[offset], expectedFrameLen - 2);
+
+    if (rxCrc == calcCrc) {
+      check.valid = true;
+      check.responderId = candidateId;
+      check.frameOffset = offset;
+      check.frameLength = expectedFrameLen;
+
+      if (isEx) {
+        check.isException = true;
+        check.exceptionCode = response[offset + 2];
+        check.error = "modbus exception";
+      } else {
+        check.error = "ok";
+      }
+      return check;
+    }
+  }
+
   uint16_t receivedCrc = static_cast<uint16_t>(response[responseLen - 2]) |
                          (static_cast<uint16_t>(response[responseLen - 1]) << 8);
   uint16_t computedCrc = crc16(response, responseLen - 2);
-  if (receivedCrc != computedCrc) {
-    check.error = "crc mismatch";
-    return check;
-  }
-
-  if (!isBroadcastAddress(slaveId) && response[0] != slaveId) {
-    check.error = "unexpected slave id";
-    return check;
-  }
-
-  check.responderId = response[0];
-
-  if (response[1] == static_cast<uint8_t>(functionCode | ExceptionMask)) {
-    check.valid = true;
-    check.isException = true;
-    check.exceptionCode = response[2];
-    check.error = "modbus exception";
-    return check;
-  }
-
-  if (response[1] != functionCode) {
-    check.error = "unexpected function code";
-    return check;
-  }
-
-  check.valid = true;
-  check.error = "ok";
+#ifdef DEBUG
+  Logf("[MODBUS][CRC] Mismatch! rxCrc=0x%04X calcCrc=0x%04X len=%u\n",
+       receivedCrc, computedCrc, (unsigned int)responseLen);
+#endif
+  check.error = "crc mismatch";
   return check;
 }
 
@@ -293,16 +320,23 @@ ModbusRtu::ReadResult ModbusRtu::readRegisters(uint8_t slaveId, uint8_t function
   size_t responseLen = 0U;
   if (!sendRequestAndCollectResponse(request, sizeof(request), response, sizeof(response),
                                      responseLen)) {
+#ifdef DEBUG
+    logHexDump("readRegisters", request, sizeof(request), response, responseLen, "timeout");
+#endif
     result.error = "timeout or short response";
     return result;
   }
 
   ResponseCheck check = validateResponse(slaveId, functionCode, response, responseLen);
   if (!check.valid) {
+#ifdef DEBUG
+    logHexDump("readRegisters", request, sizeof(request), response, responseLen, check.error);
+#endif
     result.error = check.error;
     return result;
   }
 
+  const uint8_t* frame = response + check.frameOffset;
   result.responderId = check.responderId;
   if (check.isException) {
     result.isException = true;
@@ -311,9 +345,9 @@ ModbusRtu::ReadResult ModbusRtu::readRegisters(uint8_t slaveId, uint8_t function
     return result;
   }
 
-  uint8_t byteCount = response[2];
+  uint8_t byteCount = frame[2];
   size_t expectedLen = static_cast<size_t>(byteCount) + static_cast<size_t>(MinResponseFrameBytes);
-  if (responseLen < expectedLen) {
+  if (check.frameLength < expectedLen) {
     result.error = "incomplete payload";
     return result;
   }
@@ -331,8 +365,8 @@ ModbusRtu::ReadResult ModbusRtu::readRegisters(uint8_t slaveId, uint8_t function
 
   result.count = registerBytes;
   for (uint8_t i = 0U; i < registerBytes; ++i) {
-    uint8_t hi = response[3U + (BytePairSize * i)];
-    uint8_t lo = response[4U + (BytePairSize * i)];
+    uint8_t hi = frame[3U + (BytePairSize * i)];
+    uint8_t lo = frame[4U + (BytePairSize * i)];
     result.values[i] = (static_cast<uint16_t>(hi) << 8) | static_cast<uint16_t>(lo);
   }
 
@@ -363,16 +397,23 @@ ModbusRtu::WriteResult ModbusRtu::writeSingleRegister(uint8_t slaveId, uint16_t 
       return result;
     }
 
+#ifdef DEBUG
+    logHexDump("writeSingleRegister", request, sizeof(request), response, responseLen, "timeout");
+#endif
     result.error = "timeout or short response";
     return result;
   }
 
   ResponseCheck check = validateResponse(slaveId, WriteSingleRegisterFn, response, responseLen);
   if (!check.valid) {
+#ifdef DEBUG
+    logHexDump("writeSingleRegister", request, sizeof(request), response, responseLen, check.error);
+#endif
     result.error = check.error;
     return result;
   }
 
+  const uint8_t* frame = response + check.frameOffset;
   result.responderId = check.responderId;
   if (check.isException) {
     result.isException = true;
@@ -381,13 +422,13 @@ ModbusRtu::WriteResult ModbusRtu::writeSingleRegister(uint8_t slaveId, uint16_t 
     return result;
   }
 
-  if (responseLen < WriteResponseFrameBytes) {
+  if (check.frameLength < WriteResponseFrameBytes) {
     result.error = "unexpected write response";
     return result;
   }
 
-  uint16_t echoedRegister = (static_cast<uint16_t>(response[2]) << 8) | response[3];
-  uint16_t echoedValue = (static_cast<uint16_t>(response[4]) << 8) | response[5];
+  uint16_t echoedRegister = (static_cast<uint16_t>(frame[2]) << 8) | frame[3];
+  uint16_t echoedValue = (static_cast<uint16_t>(frame[4]) << 8) | frame[5];
   if (echoedRegister != registerAddress || echoedValue != value) {
     result.error = "write echo mismatch";
     return result;

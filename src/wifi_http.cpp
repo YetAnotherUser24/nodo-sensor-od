@@ -25,6 +25,7 @@
 #include <esp_sntp.h>
 #include <esp_task_wdt.h>
 #include <time.h>
+#include <ArduinoOTA.h>
 
 extern RtcDS3231<TwoWire> rtc;
 extern RtcDateTime rtcNow;
@@ -32,14 +33,25 @@ extern char dateStr[20];
 
 /* ----------------------------- WiFi Connect ----------------------------- */
 
-bool wifiConnect() {
+static unsigned long s_lastWifiRetry = 0;
+static bool s_wasConnected = false;
+
+bool wifiConnect(bool block) {
   if (WiFi.status() == WL_CONNECTED) {
     return true;
   }
 
   Logf("WiFi connecting to \"%s\"...", WIFI_SSID);
   WiFi.mode(WIFI_STA);
+  WiFi.setAutoReconnect(true);
+  WiFi.setTxPower(WIFI_POWER_8_5dBm); // Crucial para la estabilidad
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+  s_lastWifiRetry = millis();
+
+  if (!block) {
+    Logln(" (Async mode)");
+    return false;
+  }
 
   unsigned long t0 = millis();
   while (WiFi.status() != WL_CONNECTED) {
@@ -54,9 +66,37 @@ bool wifiConnect() {
   }
 
   Logf(" connected (IP: %s)\n", WiFi.localIP().toString().c_str());
+  s_wasConnected = true;
   syncTimeNtp(3000);
 
   return true;
+}
+
+void wifiMaintain() {
+  if (WiFi.status() != WL_CONNECTED) {
+    if (s_wasConnected) {
+      Logln("[Red] Desconectado. Auto-reconnect activo...");
+      // digitalWrite(LED_BUILTIN, HIGH);
+      s_wasConnected = false;
+      s_lastWifiRetry = millis();
+    }
+    
+    // SEGURO DE VIDA: Si el AutoReconnect interno falla por 30 segundos
+    if (millis() - s_lastWifiRetry > 30000) {
+      Logln("[Red] Pila WiFi atascada. Reiniciando hardware de red...");
+      WiFi.disconnect(true);
+      vTaskDelay(pdMS_TO_TICKS(100));
+      WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+      s_lastWifiRetry = millis();
+    }
+  } else {
+    if (!s_wasConnected) {
+      Logf("[Red] Conectado. IP: %s\n", WiFi.localIP().toString().c_str());
+      // digitalWrite(LED_BUILTIN, LOW);
+      s_wasConnected = true;
+      syncTimeNtp(3000);
+    }
+  }
 }
 
 /* ----------------------------- NTP Time Sync ----------------------------- */

@@ -12,9 +12,15 @@
 
 /**
  * @brief Connects to WiFi using credentials from config.h.
- * @return true if connected, false on timeout.
+ * @param block If true, block until connected or timeout. If false, connect asynchronously.
+ * @return true if connected, false on timeout or async.
  */
-bool wifiConnect();
+bool wifiConnect(bool block = true);
+
+/**
+ * @brief Non-blocking WiFi maintainer. Checks connection and handles 30s timeout fallback.
+ */
+void wifiMaintain();
 
 /**
  * @brief Disconnects WiFi cleanly before deep sleep.
@@ -73,7 +79,8 @@ bool pollPendingCommands();
 
 #else
 
-static inline bool wifiConnect() { return false; }
+static inline bool wifiConnect(bool block = true) { return false; }
+static inline void wifiMaintain() {}
 static inline void wifiDisconnect() {}
 static inline bool syncTimeNtp(uint32_t = 0) { return false; }
 static inline bool publishToAquaControl(uint32_t, int16_t*, int16_t, uint32_t) {

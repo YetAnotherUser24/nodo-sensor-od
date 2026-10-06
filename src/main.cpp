@@ -59,6 +59,7 @@
 
 #ifdef WIFI_MODULE
 #include <WiFi.h>
+#include <ArduinoOTA.h>
 #endif
 
 /* --------------------------- BLE Status ---------------------------- */
@@ -113,6 +114,8 @@ char csvFilename[24];
 bool fileOpen = false;
 
 String payload = "";
+
+bool isOtaUpdating = false;
 
 /* ------------------------- Config Structure ------------------------ */
 
@@ -507,11 +510,27 @@ void setup() {
 #else // WEB_MASTER_MODE
     Logln("[MASTER] Web Master Mode: Skipping initial forced sample.");
 #ifdef WIFI_MODULE
-    wifiAvailable = wifiConnect();
+    wifiAvailable = wifiConnect(false); // Async non-blocking connection
     esp_task_wdt_reset();
-    if (wifiAvailable) {
-      syncTimeNtp(5000);
-    }
+    
+    ArduinoOTA.onStart([]() {
+      isOtaUpdating = true;
+      Logln("[OTA] Update started.");
+      stopPrimarySensorRealtime();
+      experimentActive = false;
+      webMonitorActive = false;
+    });
+    ArduinoOTA.onEnd([]() {
+      isOtaUpdating = false;
+      Logln("[OTA] Update finished.");
+    });
+    ArduinoOTA.onError([](ota_error_t error) {
+      isOtaUpdating = false;
+      Logf("[OTA] Error: %d\n", error);
+    });
+    ArduinoOTA.setHostname(N_LOGGER_DEVICE_NAME);
+    ArduinoOTA.begin();
+
     gprsDone = true;
 #endif
 #endif
@@ -551,6 +570,15 @@ void setup() {
  */
 void loop() {
   esp_task_wdt_reset();
+
+#if defined(WEB_MASTER_MODE) && defined(WIFI_MODULE)
+  if (isOtaUpdating) {
+    ArduinoOTA.handle();
+    return;
+  }
+  wifiMaintain();
+  ArduinoOTA.handle();
+#endif
 
 #if !defined(DISABLE_BLE)
   bleProcessLedBlinks();

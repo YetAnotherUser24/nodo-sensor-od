@@ -320,16 +320,41 @@ bool pollPendingCommands() {
 
 /* ----------------------------- HTTPS POST ----------------------------- */
 
-bool publishToAquaControl(uint32_t seconds2000, int16_t* readings,
-                          int16_t rtcTempCenti, uint32_t status) {
-  if (WiFi.status() != WL_CONNECTED) {
-    Logln("publishToAquaControl: WiFi not connected.");
-    return false;
-  }
+/* ------------------ V4: Telemetry RAM ring buffer + Bulk flush ------------------ */
 
-  // Build ISO 8601 datetime from seconds since 2000 (local time UTC-5)
+#define TELEMETRY_QUEUE_CAPACITY  32
+#define TELEMETRY_FLUSH_THRESHOLD 12
+
+struct QueuedSample {
+  uint32_t seconds2000;
+  int16_t  readings[MAX_SENSOR_READINGS];
+  int16_t  rtcTempCenti;
+  uint32_t status;
+  uint16_t msRemainder;
+};
+
+static QueuedSample s_q[TELEMETRY_QUEUE_CAPACITY];
+static uint8_t s_qHead = 0;
+static uint8_t s_qTail = 0;
+static uint8_t s_qCount = 0;
+
+uint8_t telemetryQueueCount() { return s_qCount; }
+
+static void queuePush(const QueuedSample& s) {
+  if (s_qCount >= TELEMETRY_QUEUE_CAPACITY) {
+    s_qHead = (uint8_t)((s_qHead + 1) % TELEMETRY_QUEUE_CAPACITY);
+    s_qCount--;
+  }
+  s_q[s_qTail] = s;
+  s_qTail = (uint8_t)((s_qTail + 1) % TELEMETRY_QUEUE_CAPACITY);
+  s_qCount++;
+}
+
+/** Rellena un objeto JSON con una muestra. Emite rtc_timestamp_ms como epoch UTC ms (ADR-3). */
+static void buildSampleObject(JsonObject obj, uint32_t seconds2000, const int16_t* readings,
+                              int16_t rtcTempCenti, uint32_t status, uint16_t msRemainder) {
   uint64_t unixTs = (uint64_t)seconds2000 + UNIX_OFFSET_2000;
-  // If RTC provided an invalid or uninitialized timestamp (< 2020), fall back to NTP system time
+  // Si el RTC trae una fecha inválida (< 2020), cae a la hora de sistema sincronizada por NTP.
   if (unixTs < 1577836800ULL) {
     time_t sysNow = time(nullptr);
     if (sysNow >= 1577836800) {
@@ -345,41 +370,25 @@ bool publishToAquaControl(uint32_t seconds2000, int16_t* readings,
            tm->tm_year + 1900, tm->tm_mon + 1, tm->tm_mday,
            tm->tm_hour, tm->tm_min, tm->tm_sec);
 
-
-  extern char activeExperimentId[40];
-  extern bool experimentActive;
-
-  // Build JSON array matching new /api/telemetry/sensor_bulk expected format
-  StaticJsonDocument<768> doc;
-  JsonObject root = doc.to<JsonObject>();
-  
-  if (experimentActive && strlen(activeExperimentId) > 0) {
-    root["experiment_id"] = activeExperimentId;
-  } else {
-    root["experiment_id"] = "idle";
-  }
-
-  JsonArray bulkArr = root.createNestedArray("payload");
-  JsonObject obj = bulkArr.createNestedObject();
-  
-  obj["datetime"]          = datetime;
+  obj["datetime"]           = datetime;
   obj["seconds_since_2000"] = seconds2000;
-  obj["water_temp_centi"]  = readings[0];
-  obj["do_sat_deci_pct"]   = readings[1];
-  obj["do_milli_mg_l"]     = readings[2];
-  obj["param3_centi"]      = readings[3];
-  obj["param4_centi"]      = readings[4];
+  // ADR-3: instante absoluto (epoch Unix UTC) con resolución de milisegundos, base del Reloj Maestro.
+  obj["rtc_timestamp_ms"]   = (unixTs + LOCAL_TZ_OFFSET_SEC) * 1000ULL + (uint64_t)msRemainder;
+  obj["water_temp_centi"]   = readings[0];
+  obj["do_sat_deci_pct"]    = readings[1];
+  obj["do_milli_mg_l"]      = readings[2];
+  obj["param3_centi"]       = readings[3];
+  obj["param4_centi"]       = readings[4];
 #if defined(SENSOR_BATTERY_ADC) || defined(SENSOR_INA226) || defined(SENSOR_VIRTUAL)
-  obj["battery_mv"]        = (uint16_t)readings[MAX_SENSOR_READINGS - 1];
+  obj["battery_mv"]         = (uint16_t)readings[MAX_SENSOR_READINGS - 1];
 #endif
+  obj["rtc_temp_centi"]     = rtcTempCenti;
+  obj["status"]             = status;
+  obj["sent"]               = true;
+}
 
-  obj["rtc_temp_centi"]    = rtcTempCenti;
-  obj["status"]            = status;
-  obj["sent"]              = true;
-
-  String jsonOut;
-  serializeJson(doc, jsonOut);
-
+/** POST genérico de un payload JSON ya serializado (keep-alive + un reintento). */
+static bool postTelemetryJson(const String& jsonOut) {
 #ifdef DEBUG
   Logln("HTTPS -> AquaControl:");
   Log("   Payload: ");
@@ -452,6 +461,78 @@ bool publishToAquaControl(uint32_t seconds2000, int16_t* readings,
   Logf("   HTTP POST retry failed: %s (err %d)\n", s_http.errorToString(httpCode).c_str(), httpCode);
   closeHttpConnection();
   return false;
+}
+
+/** Encola una muestra para el próximo flush bulk (no bloqueante). */
+void queueTelemetrySample(uint32_t seconds2000, int16_t* readings, int16_t rtcTempCenti, uint32_t status) {
+  QueuedSample s;
+  s.seconds2000 = seconds2000;
+  s.rtcTempCenti = rtcTempCenti;
+  s.status = status;
+  s.msRemainder = (uint16_t)(millis() % 1000);
+  for (int i = 0; i < MAX_SENSOR_READINGS; i++) s.readings[i] = readings[i];
+  queuePush(s);
+}
+
+/**
+ * Envía todo el buffer RAM como un único paquete bulk (V4 §2.2).
+ * Devuelve true si el POST se confirmó y el buffer quedó vacío. Si falla, el buffer se preserva.
+ */
+bool flushTelemetryBulk() {
+  if (s_qCount == 0) return true;
+  if (WiFi.status() != WL_CONNECTED) return false;
+
+  extern char activeExperimentId[40];
+  extern bool experimentActive;
+
+  const size_t capacity = 320 + (size_t)s_qCount * 240;
+  DynamicJsonDocument doc(capacity);
+  JsonObject root = doc.to<JsonObject>();
+  root["experiment_id"] = (experimentActive && strlen(activeExperimentId) > 0) ? activeExperimentId : "idle";
+
+  JsonArray bulkArr = root.createNestedArray("payload");
+  for (uint8_t i = 0; i < s_qCount; i++) {
+    const QueuedSample& s = s_q[(uint8_t)((s_qHead + i) % TELEMETRY_QUEUE_CAPACITY)];
+    JsonObject obj = bulkArr.createNestedObject();
+    buildSampleObject(obj, s.seconds2000, s.readings, s.rtcTempCenti, s.status, s.msRemainder);
+  }
+
+  String jsonOut;
+  serializeJson(doc, jsonOut);
+  const uint8_t batch = s_qCount;
+
+  if (postTelemetryJson(jsonOut)) {
+    s_qHead = 0;
+    s_qTail = 0;
+    s_qCount = 0;
+    Logf("Bulk flush OK (%u samples).\n", (unsigned)batch);
+    return true;
+  }
+  Logf("Bulk flush failed; %u samples kept in RAM.\n", (unsigned)s_qCount);
+  return false;
+}
+
+/** Publica una muestra individual de inmediato (replay de SD y muestras manuales). */
+bool publishToAquaControl(uint32_t seconds2000, int16_t* readings, int16_t rtcTempCenti, uint32_t status) {
+  if (WiFi.status() != WL_CONNECTED) {
+    Logln("publishToAquaControl: WiFi not connected.");
+    return false;
+  }
+
+  extern char activeExperimentId[40];
+  extern bool experimentActive;
+
+  StaticJsonDocument<768> doc;
+  JsonObject root = doc.to<JsonObject>();
+  root["experiment_id"] = (experimentActive && strlen(activeExperimentId) > 0) ? activeExperimentId : "idle";
+
+  JsonArray bulkArr = root.createNestedArray("payload");
+  JsonObject obj = bulkArr.createNestedObject();
+  buildSampleObject(obj, seconds2000, readings, rtcTempCenti, status, (uint16_t)(millis() % 1000));
+
+  String jsonOut;
+  serializeJson(doc, jsonOut);
+  return postTelemetryJson(jsonOut);
 }
 
 #endif // WIFI_MODULE

@@ -43,6 +43,22 @@ bool publishToAquaControl(uint32_t seconds2000, int16_t* readings,
                           int16_t rtcTempCenti, uint32_t status);
 
 /**
+ * @brief Encola una muestra en el buffer RAM (V4 §2.2) sin bloquear por red.
+ */
+void queueTelemetrySample(uint32_t seconds2000, int16_t* readings, int16_t rtcTempCenti, uint32_t status);
+
+/**
+ * @brief Envía todo el buffer RAM como un único paquete bulk. Preserva el buffer si falla.
+ * @return true si el POST se confirmó (buffer vacío).
+ */
+bool flushTelemetryBulk();
+
+/**
+ * @brief Número de muestras actualmente retenidas en el buffer RAM.
+ */
+uint8_t telemetryQueueCount();
+
+/**
  * @brief Synchronizes ESP32 internal clock via WiFi NTP, updating rtcNow and DS3231 if present.
  * @param timeoutMs Maximum milliseconds to wait for NTP sync (default 5000).
  * @return true if time is synchronized, false otherwise.
@@ -86,6 +102,9 @@ static inline bool syncTimeNtp(uint32_t = 0) { return false; }
 static inline bool publishToAquaControl(uint32_t, int16_t*, int16_t, uint32_t) {
   return false;
 }
+static inline void queueTelemetrySample(uint32_t, int16_t*, int16_t, uint32_t) {}
+static inline bool flushTelemetryBulk() { return true; }
+static inline uint8_t telemetryQueueCount() { return 0; }
 typedef void (*SensorCommandCallback)(const char*, const char*, const char*);
 static inline void setSensorCommandCallback(SensorCommandCallback) {}
 static inline bool acknowledgeSensorCommand(const char*, bool, const char* = nullptr) { return false; }

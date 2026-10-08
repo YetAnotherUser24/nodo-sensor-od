@@ -26,6 +26,7 @@
 #include "esp_now_sender.h"
 #include "rtc_utils.h"
 #include "sensor_engine.h"
+#include "wdt_feed.h"
 
 #include "config.h"
 #include "log.h"
@@ -135,6 +136,8 @@ void normalizeConfig() {
  * -------------------------------------------------------------------------- */
 
 void takeMeasurement() {
+  // La medición puede superar el timeout del Task WDT (5 s) si el sensor OD no responde.
+  wdtFeed();
   /**
    * Reset telemetry structure.
    */
@@ -180,7 +183,11 @@ void takeMeasurement() {
   OdTelemetryPacket espNowPkt;
   espNowPkt.magic = AQUACONTROL_PACKET_MAGIC;
   espNowPkt.sequence = ++espNowSeqCounter;
-  espNowPkt.rtc_timestamp_ms = (uint64_t)secondsSince2000 * 1000ULL + (millis() % 1000);
+  // ADR-3: el Reloj Maestro publica epoch Unix UTC en ms (misma base que los nodos NTP),
+  // para que el ODrive y los actuadores alineen sus series sin desfase horario.
+  espNowPkt.rtc_timestamp_ms =
+      ((uint64_t)secondsSince2000 + UNIX_OFFSET_2000 + LOCAL_TZ_OFFSET_SEC) * 1000ULL
+      + (uint64_t)(millis() % 1000);
   espNowPkt.water_temperature = telemetryPayload.sensorReadings[0] / 100.0f;  // centi-C to C
   espNowPkt.oxygen_saturation = telemetryPayload.sensorReadings[1] / 10.0f;   // deci-% to %
   espNowPkt.dissolved_oxygen = telemetryPayload.sensorReadings[2] / 1000.0f; // milli-mg/L to mg/L
@@ -223,7 +230,9 @@ void takeMeasurement() {
 #endif
 
 #ifdef SD_MODULE
+  wdtFeed();
   logDailyRow(secondsSince2000, telemetryPayload.sensorReadings, tempCenti, telemetryPayload.status, FLAG_NOT_SENT);
+  wdtFeed();
 #endif
 
   error(1, LED_PIN);
@@ -552,7 +561,7 @@ bool startExperimentFile(const char* filename) {
 
   // If new or empty file, write RFC 4180 CSV header
   if (!exists || s_expFile.fileSize() == 0) {
-    s_expFile.println(F("Timestamp,RTC_Sec,DO_mg_L,Sat_Pct,Temp_C,Batt_V"));
+    s_expFile.println(F("RTC_ms,Timestamp,RTC_Sec,DO_mg_L,Sat_Pct,Temp_C,Batt_V"));
     s_expFile.flush();
   }
 
@@ -576,8 +585,12 @@ void logExperimentRow(uint32_t sec2000, int16_t* readings, int16_t rtcTempCenti,
   float tempVal = readings[0] / 100.0f;
   float battV = battMv / 1000.0f;
 
-  s_expFile.printf("%s,%lu,%.3f,%.2f,%.2f,%.2f\r\n",
-                   isoBuf, (unsigned long)sec2000, doVal, satVal, tempVal, battV);
+  // ADR-3: primera columna = epoch Unix UTC en ms (alineable con la telemetría bulk del ODrive).
+  uint64_t rtcMs = (unixTs + LOCAL_TZ_OFFSET_SEC) * 1000ULL + (uint64_t)(millis() % 1000);
+
+  s_expFile.printf("%llu,%s,%lu,%.3f,%.2f,%.2f,%.2f\r\n",
+                   (unsigned long long)rtcMs, isoBuf, (unsigned long)sec2000,
+                   doVal, satVal, tempVal, battV);
   s_expFile.flush(); // Flush each row immediately to prevent data loss
 }
 

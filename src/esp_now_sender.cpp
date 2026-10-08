@@ -38,7 +38,11 @@ bool espNowSenderInit() {
   }
 
   espNowReady = true;
-  Logln("[ESP-NOW] Sender initialized successfully.");
+  // `peerInfo.channel = 0` (auto-seguir) es el requisito del proyecto: ESP-NOW y Wi-Fi comparten
+  // radio y canal, por lo que el peer SIEMPRE debe usar el canal actual del STA (el que fija el AP).
+  // Un canal explícito distinto obligaría al radio a cambiar de canal y rompería ambas cosas.
+  Logf("[ESP-NOW] Sender initialized successfully (peer ch=0 auto-follow, WiFi ch=%u).\n",
+       (unsigned)WiFi.channel());
   return true;
 }
 
@@ -58,8 +62,10 @@ bool espNowBroadcastDO(const OdTelemetryPacket& packet) {
   }
 
   if (result == ESP_OK) {
-    Logf("[ESP-NOW] TX Seq #%u: DO=%.3f mg/L | Temp=%.2f C | Sat=%.1f %%\n",
-         packet.sequence, packet.dissolved_oxygen, packet.water_temperature, packet.oxygen_saturation);
+    // El canal en la traza confirma en banco que emisor y receptor comparten frecuencia.
+    Logf("[ESP-NOW] TX Seq #%u (ch=%u): DO=%.3f mg/L | Temp=%.2f C | Sat=%.1f %%\n",
+         packet.sequence, (unsigned)WiFi.channel(), packet.dissolved_oxygen,
+         packet.water_temperature, packet.oxygen_saturation);
     return true;
   } else {
     Logf("[ESP-NOW] TX failed, err=%d\n", result);

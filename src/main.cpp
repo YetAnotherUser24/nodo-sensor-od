@@ -149,6 +149,9 @@ bool webMonitorActive = false;
 uint32_t webMonitorIntervalMs = 5000;
 bool manualSampleRequested = false;
 
+/** V4: indica que existe al menos una muestra válida en telemetryPayload (habilita el heartbeat IDLE). */
+bool hasValidTelemetry = false;
+
 #ifdef WIFI_MODULE
 void onSensorCommandReceived(const char* cmdId, const char* action, const char* payloadJson) {
   StaticJsonDocument<384> pDoc;
@@ -257,6 +260,40 @@ void onSensorCommandReceived(const char* cmdId, const char* action, const char* 
       Logf("[CONFIG] Sleep cycle updated to %d min\n", cycleMin);
     }
     stateDoc["sleep_cycle_min"] = moduleCfg.measure_time;
+
+  } else if (strcmp(action, "set_state") == 0) {
+    // Orquestador V4: IDLE | ACTIVE_EXPERIMENT | MANUAL_OVERRIDE
+    const char* sysState = pDoc["state"] | "IDLE";
+    int intervalSec = pDoc["interval_sec"] | 5;
+    if (intervalSec < 1) intervalSec = 1;
+    if (intervalSec > 60) intervalSec = 60;
+
+    if (strcmp(sysState, "ACTIVE_EXPERIMENT") == 0) {
+      const char* expId = pDoc["experiment_id"] | "";
+      if (expId != nullptr && strlen(expId) > 0) {
+        strncpy(activeExperimentId, expId, sizeof(activeExperimentId) - 1);
+        activeExperimentId[sizeof(activeExperimentId) - 1] = '\0';
+      }
+      experimentIntervalMs = intervalSec * 1000UL;
+      webMonitorIntervalMs = intervalSec * 1000UL;
+      experimentActive = true;
+      webMonitorActive = true;
+      oledShowMonitorStart(intervalSec);
+      stateDoc["monitor_active"] = true;
+      stateDoc["monitor_interval_sec"] = intervalSec;
+    } else {
+      // IDLE o MANUAL_OVERRIDE: cesa el muestreo automático; el operador toma el control directo.
+      experimentActive = false;
+      webMonitorActive = false;
+#ifdef SD_MODULE
+      stopExperimentFile();
+#endif
+      oledShowMonitorStop();
+      stopPrimarySensorRealtime();
+      stateDoc["monitor_active"] = false;
+      stateDoc["active_experiment"] = nullptr;
+    }
+    stateDoc["system_state"] = sysState;
 
   } else if (strcmp(action, "sleep") == 0) {
     int sleepMin = pDoc["minutes"] | 30;
@@ -631,14 +668,22 @@ void loop() {
       // 3. Update OLED display
       oledUpdateMonitor(telemetryPayload, rtcNow, activeInterval / 1000);
 
-      // 4. Stream to AquaControl dashboard via WiFi HTTPS
+      // 4. Acumular en RAM y enviar en lote (Bulk) cada 5 s — V4 §2.2
 #ifdef WIFI_MODULE
       if (WiFi.status() != WL_CONNECTED) {
         wifiConnect();
       }
-      if (WiFi.status() == WL_CONNECTED) {
-        publishToAquaControl(rtcNow.TotalSeconds(), telemetryPayload.sensorReadings,
-                             telemetryPayload.temperature, telemetryPayload.status);
+      queueTelemetrySample(rtcNow.TotalSeconds(), telemetryPayload.sensorReadings,
+                           telemetryPayload.temperature, telemetryPayload.status);
+      hasValidTelemetry = true;
+      {
+        static unsigned long lastBulkFlush = 0;
+        if (millis() - lastBulkFlush >= 5000 || telemetryQueueCount() >= 12) {
+          lastBulkFlush = millis();
+          if (WiFi.status() == WL_CONNECTED) {
+            flushTelemetryBulk();
+          }
+        }
       }
 #endif
 
@@ -681,6 +726,23 @@ void loop() {
     }
 #endif
   }
+
+#ifdef WIFI_MODULE
+  // V4 §2.1: heartbeat IDLE cada 20 s reenviando la última lectura válida (sin re-muestrear ni
+  // emitir ESP-NOW, para no reactuar el lazo del ODrive mientras el sistema está en reposo).
+  static unsigned long lastIdleHeartbeat = 0;
+  if (hasValidTelemetry && millis() - lastIdleHeartbeat >= 20000) {
+    lastIdleHeartbeat = millis();
+    if (WiFi.status() != WL_CONNECTED) {
+      wifiConnect(false);
+    }
+    if (WiFi.status() == WL_CONNECTED) {
+      publishToAquaControl(rtcNow.TotalSeconds(), telemetryPayload.sensorReadings,
+                           telemetryPayload.temperature, telemetryPayload.status);
+    }
+  }
+#endif
+
   delay(50);
   return;
 #endif

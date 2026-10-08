@@ -87,8 +87,10 @@ Configured in [src/config.h](file:///c:/Users/Sam/Documents/Tesis/Codigos/od-log
 - Host: `aquacontrol-two.vercel.app`
 - Authentication Header: `X-Device-Key: <AQUACONTROL_DEVICE_KEY>`
 
-### 1. Telemetry Upload (`POST /api/telemetry/sensor`)
-Request JSON:
+### 1. Telemetry Upload (`POST /api/telemetry/sensor` & `POST /api/telemetry/sensor_bulk`)
+The logger streams data using a Dual-Path Data Architecture depending on the experiment state:
+
+- **Realtime Mode (1 Hz):** Uploads standard single JSON object to `/api/telemetry/sensor`.
 ```json
 {
   "datetime": "2026-09-12T05:14:00-05:00",
@@ -104,6 +106,8 @@ Request JSON:
   "sent": true
 }
 ```
+
+- **Bulk Mode (0.2 Hz):** During `ACTIVE_EXPERIMENT`, the logger accumulates samples and uploads a JSON array (`[ { ... }, { ... } ]`) to `/api/telemetry/sensor_bulk` every 5 seconds to bypass Vercel edge latency.
 
 Server Response with Piggybacked Command:
 ```json

@@ -13,6 +13,7 @@
 #include "modbus_rtu.h"
 #include "n_logger_config.h"
 #include "oled_display.h"
+#include "wdt_feed.h"
 
 #include <HardwareSerial.h>
 #include <esp32-hal-adc.h>
@@ -121,7 +122,7 @@ static int16_t odReadAll(int16_t* values) {
       triggered = true;
     } else {
       if (retry == 0) {
-        delay(100);
+        wdtDelay(100);
       }
     }
   }
@@ -139,7 +140,7 @@ static int16_t odReadAll(int16_t* values) {
   if (delayRes.success && delayRes.count >= 1 && delayRes.values[0] > 0) {
     samplingDelayMs = delayRes.values[0];
   }
-  delay(samplingDelayMs);
+  wdtDelay(samplingDelayMs);
 
   // 3. Read 10 registers starting at 0x0053
   auto readRes =
@@ -336,7 +337,7 @@ void sensorReadAll(TelemetryPayload& tp) {
     // Initial power-on
     setPinActive(OD_PWR_PIN, OD_PWR_ACTIVE_HIGH);
 #ifndef TEST
-    delay(OD_WARMUP_MS);
+    wdtDelay(OD_WARMUP_MS);
 #endif
     s_sensorPowered = true;
   }
@@ -347,6 +348,9 @@ void sensorReadAll(TelemetryPayload& tp) {
   const unsigned long SAMPLE_TIMEOUT = 5000;
 
   while (nread < OD_SAMPLE_COUNT && (millis() - sampleStart) < SAMPLE_TIMEOUT) {
+    // El ciclo completo puede superar el timeout del Task WDT (5 s) cuando el sensor no
+    // responde (warmup 1.5 s + timeout de muestreo 5 s): se alimenta el WDT en cada vuelta.
+    wdtFeed();
     int16_t values[OD_NUM_READINGS] = {0};
     int16_t status = odReadAll(values);
 
@@ -356,10 +360,10 @@ void sensorReadAll(TelemetryPayload& tp) {
       }
       nread++;
       if (nread < OD_SAMPLE_COUNT) {
-        delay(200);
+        wdtDelay(200);
       }
     } else {
-      delay(100);
+      wdtDelay(100);
     }
   }
 
@@ -393,7 +397,7 @@ void sensorReadAll(TelemetryPayload& tp) {
   if (!ina226Configured) {
     ina226WriteRegister(0x00, 0x4726); // MODE=110 (bus continuous), AVG=64, VBUSCT=1.1ms
 #ifndef TEST
-    delay(INA226_WARMUP_MS);
+    wdtDelay(INA226_WARMUP_MS);
 #endif
     ina226Configured = true;
   }
@@ -423,7 +427,7 @@ int16_t readPrimarySensorRealtime() {
     gpio_hold_dis((gpio_num_t)OD_DE_RE_PIN);
     setPinActive(OD_PWR_PIN, OD_PWR_ACTIVE_HIGH);
 #ifndef TEST
-    delay(OD_WARMUP_MS);
+    wdtDelay(OD_WARMUP_MS);
 #endif
     s_sensorPowered = true;
   }

@@ -140,7 +140,7 @@ BLECharacteristic* pCharacteristic = nullptr;
 /* -------------------- Experiment & Web Monitor --------------------- */
 
 bool experimentActive = false;
-uint32_t experimentIntervalMs = 2000;
+uint32_t experimentIntervalMs = 5000;
 char activeExperimentId[40] = {0};
 char activeExperimentName[48] = {0};
 char activeExperimentFilename[16] = "EXP_01.CSV";
@@ -166,7 +166,7 @@ void onSensorCommandReceived(const char* cmdId, const char* action, const char* 
     const char* expId = pDoc["experiment_id"] | "exp_default";
     const char* expName = pDoc["name"] | "Experimento";
     const char* fname = pDoc["csv_filename"] | "EXP_01.CSV";
-    int intervalSec = pDoc["interval_sec"] | 2;
+    int intervalSec = pDoc["interval_sec"] | 5;
     if (intervalSec < 1) intervalSec = 1;
     if (intervalSec > 60) intervalSec = 60;
 

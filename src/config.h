@@ -9,7 +9,7 @@
 /* ----------------------- AquaControl Dashboard ----------------------- */
 
 #define AQUACONTROL_HOST       "tesisutec.vercel.app"
-#define AQUACONTROL_PATH       "/api/telemetry/sensor"
+#define AQUACONTROL_PATH       "/api/telemetry/sensor_bulk"
 #define AQUACONTROL_DEVICE_KEY "ESP32_OD_SENSOR"
 
 /* ------------------------------ BLE ---------------------------------- */

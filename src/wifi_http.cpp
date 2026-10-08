@@ -346,22 +346,36 @@ bool publishToAquaControl(uint32_t seconds2000, int16_t* readings,
            tm->tm_hour, tm->tm_min, tm->tm_sec);
 
 
-  // Build JSON matching /api/telemetry/sensor expected format
-  StaticJsonDocument<384> doc;
-  doc["datetime"]          = datetime;
-  doc["seconds_since_2000"] = seconds2000;
-  doc["water_temp_centi"]  = readings[0];
-  doc["do_sat_deci_pct"]   = readings[1];
-  doc["do_milli_mg_l"]     = readings[2];
-  doc["param3_centi"]      = readings[3];
-  doc["param4_centi"]      = readings[4];
+  extern char activeExperimentId[40];
+  extern bool experimentActive;
+
+  // Build JSON array matching new /api/telemetry/sensor_bulk expected format
+  StaticJsonDocument<768> doc;
+  JsonObject root = doc.to<JsonObject>();
+  
+  if (experimentActive && strlen(activeExperimentId) > 0) {
+    root["experiment_id"] = activeExperimentId;
+  } else {
+    root["experiment_id"] = "idle";
+  }
+
+  JsonArray bulkArr = root.createNestedArray("payload");
+  JsonObject obj = bulkArr.createNestedObject();
+  
+  obj["datetime"]          = datetime;
+  obj["seconds_since_2000"] = seconds2000;
+  obj["water_temp_centi"]  = readings[0];
+  obj["do_sat_deci_pct"]   = readings[1];
+  obj["do_milli_mg_l"]     = readings[2];
+  obj["param3_centi"]      = readings[3];
+  obj["param4_centi"]      = readings[4];
 #if defined(SENSOR_BATTERY_ADC) || defined(SENSOR_INA226) || defined(SENSOR_VIRTUAL)
-  doc["battery_mv"]        = (uint16_t)readings[MAX_SENSOR_READINGS - 1];
+  obj["battery_mv"]        = (uint16_t)readings[MAX_SENSOR_READINGS - 1];
 #endif
 
-  doc["rtc_temp_centi"]    = rtcTempCenti;
-  doc["status"]            = status;
-  doc["sent"]              = true;
+  obj["rtc_temp_centi"]    = rtcTempCenti;
+  obj["status"]            = status;
+  obj["sent"]              = true;
 
   String jsonOut;
   serializeJson(doc, jsonOut);

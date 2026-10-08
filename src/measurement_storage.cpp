@@ -180,7 +180,7 @@ void takeMeasurement() {
   OdTelemetryPacket espNowPkt;
   espNowPkt.magic = AQUACONTROL_PACKET_MAGIC;
   espNowPkt.sequence = ++espNowSeqCounter;
-  espNowPkt.timestamp_sec = secondsSince2000;
+  espNowPkt.rtc_timestamp_ms = (uint64_t)secondsSince2000 * 1000ULL + (millis() % 1000);
   espNowPkt.water_temperature = telemetryPayload.sensorReadings[0] / 100.0f;  // centi-C to C
   espNowPkt.oxygen_saturation = telemetryPayload.sensorReadings[1] / 10.0f;   // deci-% to %
   espNowPkt.dissolved_oxygen = telemetryPayload.sensorReadings[2] / 1000.0f; // milli-mg/L to mg/L

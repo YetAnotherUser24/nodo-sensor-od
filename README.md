@@ -1,12 +1,14 @@
 # OD-Logger: Aqualabo DIGISENS Optical Dissolved Oxygen Telemetry System
 
+> **Repositorio:** [github.com/YetAnotherUser24/nodo-sensor-od](https://github.com/YetAnotherUser24/nodo-sensor-od)
+
 Firmware for the **OD-Logger** telemetry system based on ESP32, dedicated to monitoring water parameters using the **Aqualabo DIGISENS Optical Dissolved Oxygen (OPTOD / OD)** sensor over RS-485 Modbus RTU.
 
 Supports two hardware platforms:
 - **Natek-SD v2.0**: Bare ESP32-WROOM-32E MCU + MicroSD + DS3231 RTC + RS-485 + SH1106 OLED + INA226 battery monitor.
 - **Natek-GPRS v0.2.0** (LilyGO T-A7670SA): ESP32 + SIM7670 4G/GPRS modem + MicroSD + DS3231 RTC + RS-485 + SH1106 OLED + LiPo ADC.
 
-> 🤖 **Working with AI Agents?** See [AGENTS.md](file:///c:/Users/Sam/Documents/Tesis/Codigos/nodo-sensor-od/AGENTS.md) for the authoritative architecture, memory rules, and development guide.
+> 🤖 **Working with AI Agents?** See [AGENTS.md](AGENTS.md) for the authoritative architecture, memory rules, and development guide.
 
 ---
 
@@ -26,7 +28,7 @@ Supports two hardware platforms:
 - 🌐 **Cloud Web Dashboard Control (`AquaControl`)**
   - Real-time HTTPS telemetry streaming to `aquacontrol-two.vercel.app` via `/api/telemetry/sensor`.
   - Bidirectional remote control: `start_experiment`, `stop_experiment`, `start_monitor`, `stop_monitor`, `set_sampling_rate`, `manual_sample`.
-  - Detailed protocol guide in [docs/WEB_MASTER_PROTOCOL.md](file:///c:/Users/Sam/Documents/Tesis/Codigos/nodo-sensor-od/docs/WEB_MASTER_PROTOCOL.md).
+  - Detailed protocol guide in [docs/WEB_MASTER_PROTOCOL.md](docs/WEB_MASTER_PROTOCOL.md).
 
 - 🔬 **Dedicated Experiment Logging on MicroSD**
   - Records continuous research experiments to RFC 4180 CSV files (`/EXP_01.CSV`, `/EXP_02.CSV`).
@@ -100,7 +102,7 @@ datetime, seconds_since_2000, water_temp_centi, do_sat_deci_pct, do_milli_mg_l, 
 ---
 
 ## Documentation Links
-* [AGENTS.md](file:///c:/Users/Sam/Documents/Tesis/Codigos/nodo-sensor-od/AGENTS.md) — Comprehensive developer & AI agent instruction manual.
-* [docs/WEB_MASTER_PROTOCOL.md](file:///c:/Users/Sam/Documents/Tesis/Codigos/nodo-sensor-od/docs/WEB_MASTER_PROTOCOL.md) — AquaControl REST API & JSON wire protocol.
-* [docs/ARCHITECTURE.md](file:///c:/Users/Sam/Documents/Tesis/Codigos/nodo-sensor-od/docs/ARCHITECTURE.md) — Modular software architecture and storage design.
-* [docs/HARDWARE_SETUP.md](file:///c:/Users/Sam/Documents/Tesis/Codigos/nodo-sensor-od/docs/HARDWARE_SETUP.md) — Wiring and board schematic setup.
+* [AGENTS.md](AGENTS.md) — Comprehensive developer & AI agent instruction manual.
+* [docs/WEB_MASTER_PROTOCOL.md](docs/WEB_MASTER_PROTOCOL.md) — AquaControl REST API & JSON wire protocol.
+* [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — Modular software architecture and storage design.
+* [docs/HARDWARE_SETUP.md](docs/HARDWARE_SETUP.md) — Wiring and board schematic setup.

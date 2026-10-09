@@ -16,7 +16,7 @@ Its primary purpose is real-time and periodic monitoring of water quality parame
 
 ## 2. Hardware Platforms
 
-The codebase strictly abstracts hardware board variations via [src/board.h](file:///c:/Users/Sam/Documents/Tesis/Codigos/nodo-sensor-od/src/board.h).
+The codebase strictly abstracts hardware board variations via [src/board.h](src/board.h).
 
 | Platform | Build Flag | Target MCU | Key Peripherals | Power / Sensor Pins |
 | :--- | :--- | :--- | :--- | :--- |
@@ -40,7 +40,7 @@ The codebase strictly abstracts hardware board variations via [src/board.h](file
 ## 3. PlatformIO Environments Matrix
 
 `default_envs = lora32`, so plain `pio run` / `pio run -t upload` already target the thesis board.
-Inspect [platformio.ini](file:///c:/Users/Sam/Documents/Tesis/Codigos/nodo-sensor-od/platformio.ini) before running builds:
+Inspect [platformio.ini](platformio.ini) before running builds:
 
 | Environment | Board | Primary Modules | Description |
 | :--- | :--- | :--- | :--- |
@@ -90,7 +90,7 @@ The firmware operates in one of two fundamental architectures based on `#if defi
 
 ## 5. Web Dashboard REST API Protocol (`AquaControl`)
 
-Configured in [src/config.h](file:///c:/Users/Sam/Documents/Tesis/Codigos/nodo-sensor-od/src/config.h):
+Configured in [src/config.h](src/config.h):
 - Host: `aquacontrol-two.vercel.app`
 - Authentication Header: `X-Device-Key: <AQUACONTROL_DEVICE_KEY>`
 
@@ -170,7 +170,7 @@ Request JSON:
      - `StaticJsonDocument<512> ackDoc;` in `acknowledgeSensorCommand()`.
      - `StaticJsonDocument<256> stateDoc;` for state JSON objects.
 2. **Safe Logging Macros**:
-   - Use `Log(...)`, `Logln(...)`, and `Logf(...)` from [src/log.h](file:///c:/Users/Sam/Documents/Tesis/Codigos/nodo-sensor-od/src/log.h).
+   - Use `Log(...)`, `Logln(...)`, and `Logf(...)` from [src/log.h](src/log.h).
    - Never call `Serial.print()` directly in feature modules.
 3. **SD Card FAT 8.3 Filenames**:
    - MicroSD driver uses `SdFat`. Always format filenames as `/XXXXXXXX.CSV` (8 chars max, uppercase, e.g. `/EXP_01.CSV`).

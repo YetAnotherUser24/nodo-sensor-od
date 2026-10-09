@@ -6,7 +6,7 @@ Supports two hardware platforms:
 - **Natek-SD v2.0**: Bare ESP32-WROOM-32E MCU + MicroSD + DS3231 RTC + RS-485 + SH1106 OLED + INA226 battery monitor.
 - **Natek-GPRS v0.2.0** (LilyGO T-A7670SA): ESP32 + SIM7670 4G/GPRS modem + MicroSD + DS3231 RTC + RS-485 + SH1106 OLED + LiPo ADC.
 
-> 🤖 **Working with AI Agents?** See [AGENTS.md](file:///c:/Users/Sam/Documents/Tesis/Codigos/od-logger/AGENTS.md) for the authoritative architecture, memory rules, and development guide.
+> 🤖 **Working with AI Agents?** See [AGENTS.md](file:///c:/Users/Sam/Documents/Tesis/Codigos/nodo-sensor-od/AGENTS.md) for the authoritative architecture, memory rules, and development guide.
 
 ---
 
@@ -26,7 +26,7 @@ Supports two hardware platforms:
 - 🌐 **Cloud Web Dashboard Control (`AquaControl`)**
   - Real-time HTTPS telemetry streaming to `aquacontrol-two.vercel.app` via `/api/telemetry/sensor`.
   - Bidirectional remote control: `start_experiment`, `stop_experiment`, `start_monitor`, `stop_monitor`, `set_sampling_rate`, `manual_sample`.
-  - Detailed protocol guide in [docs/WEB_MASTER_PROTOCOL.md](file:///c:/Users/Sam/Documents/Tesis/Codigos/od-logger/docs/WEB_MASTER_PROTOCOL.md).
+  - Detailed protocol guide in [docs/WEB_MASTER_PROTOCOL.md](file:///c:/Users/Sam/Documents/Tesis/Codigos/nodo-sensor-od/docs/WEB_MASTER_PROTOCOL.md).
 
 - 🔬 **Dedicated Experiment Logging on MicroSD**
   - Records continuous research experiments to RFC 4180 CSV files (`/EXP_01.CSV`, `/EXP_02.CSV`).
@@ -52,25 +52,34 @@ Supports two hardware platforms:
 
 ## Build Targets (PlatformIO)
 
+`default_envs = lora32`, so plain `pio run -t upload` already flashes the thesis board.
+
 ```bash
-# 1. Natek-SD v2.0 Web Master (WiFi + SD + INA226 + OLED + AquaControl HTTPS) [ACTIVE TARGET]
-pio run -e od-logger-web
-pum -e od-logger-web
+# 1. Placa de la tesis: LilyGO T3 LoRa32 (ESP32-PICO-D4) con HAT SP3485EN  [ENTORNO POR DEFECTO]
+pio run -t upload
+pio device monitor -b 115200
+pio run -e lora32-ota -t upload        # por WiFi en od-logger-lora.local
 
-# 2. Virtual Sensor Benchmark (No hardware sensors required)
-pio run -e od-logger-web-virtual
+# 2. Alternativa Natek-SD v2.0 (ESP32-WROOM-32E): WiFi + SD + INA226 + OLED
+pio run -e natek-sd -t upload
+pio run -e natek-sd-ota -t upload      # por WiFi en od-logger.local
 
-# 3. Natek-SD v2.0 Autonomous Field Target (SD + BLE + OLED + INA226 + Sleep)
-pio run -e od-logger-sd
-pio run -e od-logger-sd -t upload
+# 3. Registrador autónomo de campo (SD + BLE + OLED + INA226 + deep sleep, sin nube)
+pio run -e sd-standalone -t upload
 
-# 4. Natek-GPRS v0.2.0 (GPRS + SD + BLE + OLED + Battery ADC + ThingsBoard MQTT)
-pio run -e od-logger-gprs
-pio run -e od-logger-gprs -t upload
+# 4. Simulación de sensor (sin hardware RS-485)
+pio run -e virtual -t upload
 
-# 5. I2C Diagnostic Scanner
-pio run -e i2c-scanner
+# 5. Diagnóstico: sonda del bus RS-485 (DE/RE, polaridad, baudios, esclavo)
+pio run -e probe -t upload
+
+# 6. Diagnóstico: escáner del bus I2C
+pio run -e i2c-scan -t upload
 ```
+
+> ¿Placa equivocada? Un entorno `natek-sd` sobre un **LilyGO T3 LoRa32** asigna el RS-485 a
+> GPIO16/17 y cuelga el ESP32-PICO-D4 en cada medición. Confirma el chip en el log de arranque
+> (`chip=ESP32-PICO-D4`) y consulta `src/board.h` antes de flashear.
 
 ---
 
@@ -91,7 +100,7 @@ datetime, seconds_since_2000, water_temp_centi, do_sat_deci_pct, do_milli_mg_l, 
 ---
 
 ## Documentation Links
-* [AGENTS.md](file:///c:/Users/Sam/Documents/Tesis/Codigos/od-logger/AGENTS.md) — Comprehensive developer & AI agent instruction manual.
-* [docs/WEB_MASTER_PROTOCOL.md](file:///c:/Users/Sam/Documents/Tesis/Codigos/od-logger/docs/WEB_MASTER_PROTOCOL.md) — AquaControl REST API & JSON wire protocol.
-* [docs/ARCHITECTURE.md](file:///c:/Users/Sam/Documents/Tesis/Codigos/od-logger/docs/ARCHITECTURE.md) — Modular software architecture and storage design.
-* [docs/HARDWARE_SETUP.md](file:///c:/Users/Sam/Documents/Tesis/Codigos/od-logger/docs/HARDWARE_SETUP.md) — Wiring and board schematic setup.
+* [AGENTS.md](file:///c:/Users/Sam/Documents/Tesis/Codigos/nodo-sensor-od/AGENTS.md) — Comprehensive developer & AI agent instruction manual.
+* [docs/WEB_MASTER_PROTOCOL.md](file:///c:/Users/Sam/Documents/Tesis/Codigos/nodo-sensor-od/docs/WEB_MASTER_PROTOCOL.md) — AquaControl REST API & JSON wire protocol.
+* [docs/ARCHITECTURE.md](file:///c:/Users/Sam/Documents/Tesis/Codigos/nodo-sensor-od/docs/ARCHITECTURE.md) — Modular software architecture and storage design.
+* [docs/HARDWARE_SETUP.md](file:///c:/Users/Sam/Documents/Tesis/Codigos/nodo-sensor-od/docs/HARDWARE_SETUP.md) — Wiring and board schematic setup.

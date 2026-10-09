@@ -16,7 +16,7 @@ Its primary purpose is real-time and periodic monitoring of water quality parame
 
 ## 2. Hardware Platforms
 
-The codebase strictly abstracts hardware board variations via [src/board.h](file:///c:/Users/Sam/Documents/Tesis/Codigos/od-logger/src/board.h).
+The codebase strictly abstracts hardware board variations via [src/board.h](file:///c:/Users/Sam/Documents/Tesis/Codigos/nodo-sensor-od/src/board.h).
 
 | Platform | Build Flag | Target MCU | Key Peripherals | Power / Sensor Pins |
 | :--- | :--- | :--- | :--- | :--- |
@@ -39,15 +39,22 @@ The codebase strictly abstracts hardware board variations via [src/board.h](file
 
 ## 3. PlatformIO Environments Matrix
 
-Inspect [platformio.ini](file:///c:/Users/Sam/Documents/Tesis/Codigos/od-logger/platformio.ini) before running builds:
+`default_envs = lora32`, so plain `pio run` / `pio run -t upload` already target the thesis board.
+Inspect [platformio.ini](file:///c:/Users/Sam/Documents/Tesis/Codigos/nodo-sensor-od/platformio.ini) before running builds:
 
 | Environment | Board | Primary Modules | Description |
 | :--- | :--- | :--- | :--- |
-| `od-logger-web` | Natek-SD v2.0 | WiFi + SD + INA226 + OLED + Web Master | **Current active test target**. Connects to WiFi, syncs time via NTP, logs experiments to SD, streams to AquaControl via HTTPS. |
-| `od-logger-web-virtual`| Natek-SD v2.0 | WiFi + Virtual Sensor + Web Master | Bench simulation target without physical OD or INA226 sensors. Generates synthetic telemetry for UI testing. |
-| `od-logger-sd` | Natek-SD v2.0 | SD + BLE + INA226 + OLED + Sleep | Autonomous low-power field logger. Samples periodically, directly appends to SD `/YYYYMMDD.CSV`, enters deep sleep. |
-| `od-logger-lora32` | LilyGO T3 LoRa32 | LoRa + WiFi + 0.96" OLED + ADC + Web Master | LoRa32 telemetry node with onboard 0.96" SSD1306 display and Web Master streaming. |
-| `i2c-scanner` | Natek-SD v2.0 | Standalone diagnostic | Scans I2C bus addresses (`0x3C`, `0x45`, `0x50`, `0x68`) and prints annotated device names to Serial. |
+| `lora32` | LilyGO T3 LoRa32 | WiFi + SD + ADC + OLED + Web Master | **Placa de la tesis y entorno por defecto.** ESP32-PICO-D4 con el HAT SP3485EN. |
+| `lora32-ota` | LilyGO T3 LoRa32 | same as `lora32` | Igual, pero flasheado por WiFi en `od-logger-lora.local`. |
+| `natek-sd` | Natek-SD v2.0 | WiFi + SD + INA226 + OLED + Web Master | Banco alterno (ESP32-WROOM-32E). Conecta a WiFi, sincroniza por NTP, registra en SD y sube a AquaControl por HTTPS. **Elegir solo si la placa es una Natek-SD** (ver regla 21 del AGENTS.md raíz). |
+| `natek-sd-ota` | Natek-SD v2.0 | same as `natek-sd` | Igual, pero flasheado por WiFi en `od-logger.local`. |
+| `sd-standalone` | Natek-SD v2.0 | SD + BLE + INA226 + OLED + Sleep | Registrador autónomo de campo. Muestrea periódicamente, añade a `/YYYYMMDD.CSV` y entra en deep sleep. Sin nube. |
+| `virtual` | Natek-SD v2.0 | WiFi + Virtual Sensor + Web Master | Simulación sin sensor OD ni INA226 físicos: genera telemetría sintética para probar la UI y el flujo. |
+| `probe` | LilyGO T3 LoRa32 | Standalone diagnostic | Barre el pin DE/RE del RS-485, su polaridad, los baudios y la dirección Modbus esclava para traer a punto el bus. |
+| `i2c-scan` | Natek-SD v2.0 | Standalone diagnostic | Escanea el bus I2C y anota los dispositivos conocidos (`0x3C`, `0x45`, `0x50`, `0x68`). |
+
+> Los entornos de diagnóstico (`probe`, `i2c-scan`) sustituyen por completo las fuentes del firmware
+> (`build_src_filter = -<*> +<...>`), así que **no** deben usarse para operar el nodo.
 
 ---
 
@@ -83,7 +90,7 @@ The firmware operates in one of two fundamental architectures based on `#if defi
 
 ## 5. Web Dashboard REST API Protocol (`AquaControl`)
 
-Configured in [src/config.h](file:///c:/Users/Sam/Documents/Tesis/Codigos/od-logger/src/config.h):
+Configured in [src/config.h](file:///c:/Users/Sam/Documents/Tesis/Codigos/nodo-sensor-od/src/config.h):
 - Host: `aquacontrol-two.vercel.app`
 - Authentication Header: `X-Device-Key: <AQUACONTROL_DEVICE_KEY>`
 
@@ -163,7 +170,7 @@ Request JSON:
      - `StaticJsonDocument<512> ackDoc;` in `acknowledgeSensorCommand()`.
      - `StaticJsonDocument<256> stateDoc;` for state JSON objects.
 2. **Safe Logging Macros**:
-   - Use `Log(...)`, `Logln(...)`, and `Logf(...)` from [src/log.h](file:///c:/Users/Sam/Documents/Tesis/Codigos/od-logger/src/log.h).
+   - Use `Log(...)`, `Logln(...)`, and `Logf(...)` from [src/log.h](file:///c:/Users/Sam/Documents/Tesis/Codigos/nodo-sensor-od/src/log.h).
    - Never call `Serial.print()` directly in feature modules.
 3. **SD Card FAT 8.3 Filenames**:
    - MicroSD driver uses `SdFat`. Always format filenames as `/XXXXXXXX.CSV` (8 chars max, uppercase, e.g. `/EXP_01.CSV`).
@@ -176,13 +183,14 @@ Request JSON:
 ## 7. Build & Verification Commands
 
 ```powershell
-# 1. Compile firmware for active web target
-pio run -e od-logger-web
+# 1. Compile the default environment (lora32 = the thesis board)
+pio run
 
-# 2. Flash to connected ESP32 and monitor serial output (pum)
-pum -e od-logger-web
+# 2. Flash the connected board and open the serial monitor
+pio run -t upload
+pio device monitor -b 115200
 
-# 3. Compile and run protocol & experiment self-check test
+# 3. Compile and run the protocol & experiment self-check (host, no hardware)
 g++ -std=c++17 test/test_experiment_flow.cpp -o test/test_experiment_flow.exe
 ./test/test_experiment_flow.exe
 Remove-Item -Force test/test_experiment_flow.exe

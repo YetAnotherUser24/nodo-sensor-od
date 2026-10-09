@@ -11,6 +11,7 @@ Usage:
   serial_probe.py send --port /dev/ttyACM0 --cmd "STATUS" --seconds 8
   serial_probe.py watch --port /dev/ttyACM0 --seconds 30 --filter VIRTUAL,HTTP
 """
+
 import argparse
 import sys
 import time

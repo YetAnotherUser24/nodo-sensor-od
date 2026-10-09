@@ -49,7 +49,7 @@ Inspect [platformio.ini](platformio.ini) before running builds:
 | `natek-sd` | Natek-SD v2.0 | WiFi + SD + INA226 + OLED + Web Master | Banco alterno (ESP32-WROOM-32E). Conecta a WiFi, sincroniza por NTP, registra en SD y sube a AquaControl por HTTPS. **Elegir solo si la placa es una Natek-SD** (ver regla 21 del AGENTS.md raíz). |
 | `natek-sd-ota` | Natek-SD v2.0 | same as `natek-sd` | Igual, pero flasheado por WiFi en `od-logger.local`. |
 | `sd-standalone` | Natek-SD v2.0 | SD + BLE + INA226 + OLED + Sleep | Registrador autónomo de campo. Muestrea periódicamente, añade a `/YYYYMMDD.CSV` y entra en deep sleep. Sin nube. |
-| `virtual` | Natek-SD v2.0 | WiFi + Virtual Sensor + Web Master | Simulación sin sensor OD ni INA226 físicos: genera telemetría sintética para probar la UI y el flujo. |
+| `virtual` | Natek-SD v2.0 | WiFi + Virtual Sensor + Web Master | Simulación sin sensor OD físico: el bus de sensores (`sensor_bus.h`) enlaza un modelo declarativo del OPTOD (`sensor_sim.cpp`) en lugar del Modbus real. La batería es **solo ADC**. Ver `VIRTUAL_NODES.md` en la raíz. |
 | `probe` | LilyGO T3 LoRa32 | Standalone diagnostic | Barre el pin DE/RE del RS-485, su polaridad, los baudios y la dirección Modbus esclava para traer a punto el bus. |
 | `i2c-scan` | Natek-SD v2.0 | Standalone diagnostic | Escanea el bus I2C y anota los dispositivos conocidos (`0x3C`, `0x45`, `0x50`, `0x68`). |
 

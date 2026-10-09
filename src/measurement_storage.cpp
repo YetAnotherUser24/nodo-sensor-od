@@ -145,7 +145,7 @@ void takeMeasurement() {
   telemetryPayload.temperature = 0;
   for (int i = 0; i < MAX_SENSOR_READINGS; i++)
     telemetryPayload.sensorReadings[i] = 0;
-#if defined(SENSOR_BATTERY_ADC) || defined(SENSOR_INA226) || defined(SENSOR_VIRTUAL)
+#if defined(SENSOR_BATTERY_ADC)
   telemetryPayload.battery = 0;
 #endif
   telemetryPayload.status = 0x00000000;
@@ -198,7 +198,7 @@ void takeMeasurement() {
 
 
   /* Low-battery emergency config update (battery populated by sensor engine) */
-#if defined(SENSOR_BATTERY_ADC) || defined(SENSOR_INA226)
+#if defined(SENSOR_BATTERY_ADC)
   if (telemetryPayload.battery < 3400) {
     moduleCfg.measure_time = 60;
     moduleCfg.bluetooth_time = 1;
@@ -215,7 +215,7 @@ void takeMeasurement() {
   formatDateTime(rtcNow);
   Logf("========== MEASUREMENT TAKEN ==========\n");
   Logf("   Timestamp: %lu (%s %s)\n", (unsigned long)secondsSince2000, dateStr, LOCAL_TZ_NAME);
-#if defined(SENSOR_BATTERY_ADC) || defined(SENSOR_INA226)
+#if defined(SENSOR_BATTERY_ADC)
   Logf("   Battery: %u mV\n", telemetryPayload.battery);
 #endif
   Logf("   Temperature: %.2f C\n", tempCenti / 100.0f);
@@ -311,7 +311,7 @@ void getFilename(const RtcDateTime& ts) {
 static void writeCsvHeader(SdFile& file) {
   file.print(F("datetime, seconds_since_2000"));
   file.print(F(", water_temp_centi, do_sat_deci_pct, do_milli_mg_l, param3_centi, param4_centi"));
-#if defined(SENSOR_BATTERY_ADC) || defined(SENSOR_INA226)
+#if defined(SENSOR_BATTERY_ADC)
   file.print(F(", battery_mv"));
 #endif
   file.println(F(", rtc_temp_centi, status, sent"));

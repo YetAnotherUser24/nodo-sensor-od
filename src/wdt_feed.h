@@ -4,7 +4,7 @@
  *
  * Contexto: el lazo principal del OD-Logger está suscrito al Task WDT del Core 1 (5 s por
  * defecto). Una medición puede tardar ~6.7 s cuando el sensor OD no responde
- * (warmup 1500 ms + timeout de muestreo 5000 ms + INA226 200 ms), lo que provocaba un
+ * (warmup 1500 ms + timeout de muestreo 5000 ms), lo que provocaba un
  * `TG1WDT_SYS_RESET` y reiniciaba el nodo en cada intento de muestreo.
  *
  * `wdtDelay()` reemplaza a `delay()` en las esperas largas y alimenta el WDT por tramos;

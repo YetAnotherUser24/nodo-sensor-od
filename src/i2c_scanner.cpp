@@ -1,15 +1,13 @@
 /**
  * @file i2c_scanner.cpp
- * @brief Standalone I2C bus scanner diagnostic utility for Natek boards.
+ * @brief Standalone I2C bus scanner diagnostic utility for the LoRa32 board.
  *
- * Automatically handles board power rail gating (I2C_EN_PIN, EN_5V_PIN),
- * scans 7-bit I2C addresses (0x01 - 0x7E) on primary Wire bus (and Wire1 if
- * defined), and identifies known board peripherals (INA226, DS3231 RTC,
- * AT24Cxx EEPROM, OLED display).
+ * Automatically handles board power rail gating, scans 7-bit I2C addresses
+ * (0x01 - 0x7E) on the primary Wire bus, and identifies known peripherals
+ * (DS3231 RTC, AT24Cxx EEPROM, OLED display).
  *
  * Build via:
- *   pio run -e i2c-scanner -t upload -t monitor
- *   pio run -e i2c-scanner-gprs -t upload -t monitor
+ *   pio run -e i2c-scan -t upload -t monitor
  */
 
 #if defined(I2C_SCANNER)
@@ -24,7 +22,7 @@ static const char* identifyDevice(uint8_t address) {
     case 0x3D:
       return "OLED Display (SH1106 / SSD1306)";
     case 0x45:
-      return "INA226 Voltage/Current Monitor";
+      return "INA226 Voltage/Current Monitor (optional)";
     case 0x50:
     case 0x51:
     case 0x52:
@@ -70,7 +68,7 @@ void setup() {
   delay(1000);
 
   Serial.println(F("\n============================================"));
-  Serial.println(F("       Natek I2C Bus Diagnostic Scanner     "));
+  Serial.println(F("       I2C Bus Diagnostic Scanner     "));
   Serial.println(F("============================================"));
 
   boardInit();

@@ -481,10 +481,6 @@ void setup() {
         failedTransmissionCount = 0;
 
         sendSDPending();
-#if defined(SENSOR_VIRTUAL)
-        publishToAquaControl(rtcNow.TotalSeconds(), telemetryPayload.sensorReadings,
-                             telemetryPayload.temperature, telemetryPayload.status);
-#endif
 
         // ponytail: No RPC replacement needed. BLE commands cover T-x-y-z and D-YYYY-MM-DD.
       } else {
@@ -528,10 +524,6 @@ void setup() {
       failedTransmissionCount = 0;
 
       sendSDPending();
-#if defined(SENSOR_VIRTUAL)
-      publishToAquaControl(rtcNow.TotalSeconds(), telemetryPayload.sensorReadings,
-                           telemetryPayload.temperature, telemetryPayload.status);
-#endif
     } else {
       failedTransmissionCount++;
 
@@ -574,7 +566,7 @@ void setup() {
   }
 
 #ifdef WIFI_MODULE
-#if !defined(SENSOR_VIRTUAL) && !defined(WEB_MASTER_MODE)
+#if !defined(WEB_MASTER_MODE)
   if (gprsDone && !experimentActive && !webMonitorActive) {
     wifiDisconnect();
     esp_task_wdt_reset();
@@ -742,47 +734,6 @@ void loop() {
     }
   }
 #endif
-
-  delay(50);
-  return;
-#endif
-
-#if defined(SENSOR_VIRTUAL)
-  /* Continuous streaming loop for virtual dashboard test (sends every 5 seconds) */
-  static unsigned long lastVirtualSend = 0;
-  if (millis() - lastVirtualSend >= 5000) {
-    lastVirtualSend = millis();
-
-    takeMeasurement();
-
-#ifdef WIFI_MODULE
-    if (WiFi.status() != WL_CONNECTED) {
-      Logln("WiFi reconnecting...");
-      wifiConnect();
-    }
-
-    publishToAquaControl(rtcNow.TotalSeconds(), telemetryPayload.sensorReadings,
-                         telemetryPayload.temperature, telemetryPayload.status);
-#endif
-
-    oledUpdateMonitor(telemetryPayload, rtcNow, 5);
-
-#if !defined(DISABLE_BLE)
-    if (bleDeviceConnected && pServer != nullptr) {
-      int16_t primaryReading = telemetryPayload.sensorReadings[1];
-      static char readingBuf[16];
-      itoa(primaryReading, readingBuf, 10);
-      if (pNotifyCharacteristic != nullptr) {
-        pNotifyCharacteristic->setValue((const char*)readingBuf);
-        pNotifyCharacteristic->notify();
-      }
-      if (pCharacteristic != nullptr) {
-        pCharacteristic->setValue((const char*)readingBuf);
-        pCharacteristic->notify();
-      }
-    }
-#endif
-  }
 
   delay(50);
   return;

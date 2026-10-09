@@ -123,12 +123,6 @@ void prepareForDeepSleep(int minutes) {
   setPinInput(OD_RX_PIN);
   setPinInput(OD_TX_PIN);
 
-  // Put INA226 into power-down mode before deep sleep
-  // (I2C command, no GPIO needed — chip enters low-quiescent-current shutdown)
-#ifdef SENSOR_INA226
-  ina226PowerDown();
-#endif
-
 #ifdef DEBUG
   Logf("\nWAKE UP IN %d MIN\n", moduleCfg.measure_time);
 #endif

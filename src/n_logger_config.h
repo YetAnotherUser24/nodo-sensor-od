@@ -120,13 +120,9 @@
 
 /* --------------------------------------------------------------------------
  *  Battery Monitoring Configuration
- *  - SENSOR_BATTERY_ADC: ADC divider on GPIO 35 (Natek-GPRS v0.2.0 board)
- *  - SENSOR_INA226: I2C voltage/current monitor at 0x45 (Natek-SD v2.0 board)
+ *  Only the LilyGO T3 LoRa32 (the thesis board) is supported: battery is read
+ *  through the ADC divider (SENSOR_BATTERY_ADC).
  * -------------------------------------------------------------------------- */
-
-#if defined(SENSOR_INA226) && defined(SENSOR_BATTERY_ADC)
-#error "SENSOR_INA226 and SENSOR_BATTERY_ADC are mutually exclusive (both monitor battery voltage)."
-#endif
 
 #ifdef SENSOR_BATTERY_ADC
 #ifndef BATTERY_ADC_PIN
@@ -135,16 +131,6 @@
 #ifndef BATTERY_ADC_MULTIPLIER
 #define BATTERY_ADC_MULTIPLIER 2
 #endif
-#define BATTERY_NUM_READINGS 1
-#elif defined(SENSOR_INA226)
-#ifndef INA226_ADDR
-#define INA226_ADDR 0x45
-#endif
-#ifndef INA226_WARMUP_MS
-#define INA226_WARMUP_MS 200
-#endif
-#define BATTERY_NUM_READINGS 1
-#elif defined(SENSOR_VIRTUAL)
 #define BATTERY_NUM_READINGS 1
 #else
 #define BATTERY_NUM_READINGS 0
@@ -185,7 +171,7 @@ struct TelemetryPayload {
   int16_t freeStorage;
   int16_t temperature;
   int16_t sensorReadings[MAX_SENSOR_READINGS];
-#if defined(SENSOR_BATTERY_ADC) || defined(SENSOR_INA226) || defined(SENSOR_VIRTUAL)
+#if defined(SENSOR_BATTERY_ADC)
   uint32_t battery;
 #endif
   uint32_t status;

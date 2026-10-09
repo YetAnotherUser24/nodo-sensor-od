@@ -379,7 +379,7 @@ static void buildSampleObject(JsonObject obj, uint32_t seconds2000, const int16_
   obj["do_milli_mg_l"]      = readings[2];
   obj["param3_centi"]       = readings[3];
   obj["param4_centi"]       = readings[4];
-#if defined(SENSOR_BATTERY_ADC) || defined(SENSOR_INA226) || defined(SENSOR_VIRTUAL)
+#if defined(SENSOR_BATTERY_ADC)
   obj["battery_mv"]         = (uint16_t)readings[MAX_SENSOR_READINGS - 1];
 #endif
   obj["rtc_temp_centi"]     = rtcTempCenti;

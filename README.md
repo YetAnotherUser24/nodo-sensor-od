@@ -4,10 +4,11 @@
 
 Firmware for the **OD-Logger** telemetry system based on ESP32, dedicated to monitoring water parameters using the **Aqualabo DIGISENS Optical Dissolved Oxygen (OPTOD / OD)** sensor over RS-485 Modbus RTU.
 
-Supports two hardware platforms:
-- **Natek-SD v2.0**: Bare ESP32-WROOM-32E MCU + MicroSD + DS3231 RTC + RS-485 + SH1106 OLED + INA226 battery monitor.
-- **Natek-GPRS v0.2.0** (LilyGO T-A7670SA): ESP32 + SIM7670 4G/GPRS modem + MicroSD + DS3231 RTC + RS-485 + SH1106 OLED + LiPo ADC.
+Hardware platform:
+- **LilyGO T3 LoRa32 (v1.6)**: ESP32-PICO-D4 + HAT SP3485EN for RS-485, MicroSD, DS3231 RTC, onboard SSD1306 OLED. Battery read via the internal ADC divider (`SENSOR_BATTERY_ADC`, GPIO 35).
 
+> This is the only board currently supported (thesis bench). The Natek-SD / Natek-GPRS paths were removed.
+>
 > 🤖 **Working with AI Agents?** See [AGENTS.md](AGENTS.md) for the authoritative architecture, memory rules, and development guide.
 
 ---
@@ -42,8 +43,7 @@ Supports two hardware platforms:
   - **2 pulses** (100 ms ON / 100 ms OFF x2): Signals transition into **Deep Sleep**.
 
 - 🔋 **Battery Management**
-  - **Natek-SD**: Monitored via INA226 I2C sensor at address `0x45` (`sensorReadings[5]`).
-  - **Natek-GPRS**: Monitored via internal ADC on GPIO 35 (`sensorReadings[5]`).
+  - Read through the internal ADC divider on GPIO 35 (`sensorReadings[5]`). ADC-only.
 
 - 💾 **Resilient Offline Storage**
   - External I2C EEPROM (24LCxxx) ring buffer.
@@ -62,17 +62,10 @@ pio run -t upload
 pio device monitor -b 115200
 pio run -e lora32-ota -t upload        # por WiFi en od-logger-lora.local
 
-# 2. Alternativa Natek-SD v2.0 (ESP32-WROOM-32E): WiFi + SD + INA226 + OLED
-pio run -e natek-sd -t upload
-pio run -e natek-sd-ota -t upload      # por WiFi en od-logger.local
-
-# 3. Registrador autónomo de campo (SD + BLE + OLED + INA226 + deep sleep, sin nube)
-pio run -e sd-standalone -t upload
-
-# 4. Simulación de sensor (sin hardware RS-485)
+# 2. Simulación de sensor (sin hardware RS-485)
 pio run -e virtual -t upload
 
-# 5. Diagnóstico: sonda del bus RS-485 (DE/RE, polaridad, baudios, esclavo)
+# 3. Diagnóstico: sonda del bus RS-485 (DE/RE, polaridad, baudios, esclavo)
 pio run -e probe -t upload
 
 # 6. Diagnóstico: escáner del bus I2C

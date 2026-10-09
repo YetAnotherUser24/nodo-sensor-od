@@ -14,26 +14,30 @@ Its primary purpose is real-time and periodic monitoring of water quality parame
 
 ---
 
-## 2. Hardware Platforms
+## 2. Hardware Platform
 
-The codebase strictly abstracts hardware board variations via [src/board.h](src/board.h).
+The codebase abstracts the board via [src/board.h](src/board.h). Only the **LilyGO T3 LoRa32**
+(thesis bench) is supported; the Natek-SD / Natek-GPRS paths were removed, and the battery is
+read through the internal ADC divider (`SENSOR_BATTERY_ADC`).
 
 | Platform | Build Flag | Target MCU | Key Peripherals | Power / Sensor Pins |
 | :--- | :--- | :--- | :--- | :--- |
-| **Natek-SD v2.0** | `-DBOARD_NATEK_SD_V2` | ESP32-WROOM-32E (bare) | INA226 (`0x45`), 1.3" SH1106 OLED (`0x3C`), DS3231 RTC (`0x68`), MicroSD (SPI), RS-485 | `EN_5V=19`, `OD_PWR=12`, `RS485_EN=27`, `I2C_EN=25`, `LED_PIN=32` |
 | **LilyGO T3 LoRa32** | `-DBOARD_LILYGO_LORA32` | LilyGO T3 LoRa32 v1.6 | SX1278 LoRa, onboard 0.96" SSD1306 OLED (`0x3C`), DS3231 RTC, MicroSD, RS-485 | `LORA_CS=18`, `LORA_RST=23`, `LORA_DIO0=26`, `OD_PWR=25`, `LED_PIN=25` |
 
 ### Critical Electrical & Power Rail Rules
-* **3.3V I2C Rail (`I2C_EN_PIN = 25`)**: Powers the DS3231 RTC and SH1106 OLED (Natek-SD). **Never de-energize** this pin during continuous monitoring or active experiment loops, as resetting OLED power crashes the I2C bus.
-* **OLED Controller Differences**:
-  - **1.3" SH1106**: Used on Natek-SD. Requires 2-pixel column offset (`0x02`) and internal DC-DC commands (`0xAD 0x8B`, `0x33`).
-  - **0.96" SSD1306**: Onboard display for LilyGO T3 LoRa32. Requires 0-pixel column offset (`0x00`), charge pump enable (`0x8D 0x14`), and page addressing mode (`0x20 0x02`).
+* **OLED Controller**: The onboard 0.96" SSD1306 requires 0-pixel column offset (`0x00`), charge pump enable (`0x8D 0x14`), and page addressing mode (`0x20 0x02`).
 * **Dual SPI Controllers (LilyGO T3 LoRa32)**:
   - **VSPI (`SPI3`)**: Dedicated to LoRa SX1278 (`SCK=5`, `MISO=19`, `MOSI=27`, `CS=18`, `RST=23`, `DIO0=26`). Initialized via default `SPI` object or `loraSpiInit()`.
   - **HSPI (`SPI2`)**: Dedicated to MicroSD card slot (`SCK=14`, `MISO=2`, `MOSI=15`, `CS=13`). Driven independently by `sdSPI`.
   - Both buses have zero shared pins, preventing CS contention and allowing simultaneous transceiver and logging transactions.
-* **5V Boost Rail (`EN_5V_PIN = 19`) & Sensor Power (`OD_PWR_PIN = 12`)**: Supplies the MAX13487 RS-485 transceiver and the OPTOD sensor.
 * **Sensor Warmup Optimization**: The OPTOD sensor requires ~1500 ms to boot from a cold power-on. During continuous monitoring or experiments (`experimentActive || webMonitorActive`), the sensor rail is **kept energized** between samples, enabling up to **2-second continuous sampling rates**. Call `stopPrimarySensorRealtime()` upon stopping to cut power.
+
+### Device bus (hardware abstraction)
+
+All sensor hardware access goes through `src/sensor_bus.h` (`IOdSensor` + `IBatteryMonitor`,
+chosen at link time). Real builds use `sensor_bus_real.cpp` (Modbus OPTOD + ADC); virtual builds
+use `sensor_bus_virtual.cpp` bound to the declarative `sensor_sim.{h,cpp}` model. See
+[VIRTUAL_NODES.md](../VIRTUAL_NODES.md).
 
 ---
 
@@ -46,12 +50,9 @@ Inspect [platformio.ini](platformio.ini) before running builds:
 | :--- | :--- | :--- | :--- |
 | `lora32` | LilyGO T3 LoRa32 | WiFi + SD + ADC + OLED + Web Master | **Placa de la tesis y entorno por defecto.** ESP32-PICO-D4 con el HAT SP3485EN. |
 | `lora32-ota` | LilyGO T3 LoRa32 | same as `lora32` | Igual, pero flasheado por WiFi en `od-logger-lora.local`. |
-| `natek-sd` | Natek-SD v2.0 | WiFi + SD + INA226 + OLED + Web Master | Banco alterno (ESP32-WROOM-32E). Conecta a WiFi, sincroniza por NTP, registra en SD y sube a AquaControl por HTTPS. **Elegir solo si la placa es una Natek-SD** (ver regla 21 del AGENTS.md raíz). |
-| `natek-sd-ota` | Natek-SD v2.0 | same as `natek-sd` | Igual, pero flasheado por WiFi en `od-logger.local`. |
-| `sd-standalone` | Natek-SD v2.0 | SD + BLE + INA226 + OLED + Sleep | Registrador autónomo de campo. Muestrea periódicamente, añade a `/YYYYMMDD.CSV` y entra en deep sleep. Sin nube. |
-| `virtual` | Natek-SD v2.0 | WiFi + Virtual Sensor + Web Master | Simulación sin sensor OD físico: el bus de sensores (`sensor_bus.h`) enlaza un modelo declarativo del OPTOD (`sensor_sim.cpp`) en lugar del Modbus real. La batería es **solo ADC**. Ver `VIRTUAL_NODES.md` en la raíz. |
+| `virtual` | LilyGO T3 LoRa32 | WiFi + Virtual Sensor + Web Master | Simulación sin sensor OD físico: el bus de sensores (`sensor_bus.h`) enlaza un modelo declarativo del OPTOD (`sensor_sim.cpp`) en lugar del Modbus real. La batería es **solo ADC**. Ver `VIRTUAL_NODES.md` en la raíz. |
 | `probe` | LilyGO T3 LoRa32 | Standalone diagnostic | Barre el pin DE/RE del RS-485, su polaridad, los baudios y la dirección Modbus esclava para traer a punto el bus. |
-| `i2c-scan` | Natek-SD v2.0 | Standalone diagnostic | Escanea el bus I2C y anota los dispositivos conocidos (`0x3C`, `0x45`, `0x50`, `0x68`). |
+| `i2c-scan` | LilyGO T3 LoRa32 | Standalone diagnostic | Escanea el bus I2C y anota los dispositivos conocidos (`0x3C`, `0x50`, `0x68`). |
 
 > Los entornos de diagnóstico (`probe`, `i2c-scan`) sustituyen por completo las fuentes del firmware
 > (`build_src_filter = -<*> +<...>`), así que **no** deben usarse para operar el nodo.

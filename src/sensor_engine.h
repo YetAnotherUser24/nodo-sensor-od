@@ -8,7 +8,7 @@
  *   tp.sensorReadings[2] = Dissolved Oxygen (milli-mg/L)
  *   tp.sensorReadings[3] = Parameter 3 (centi)
  *   tp.sensorReadings[4] = Parameter 4 (centi)
- *   tp.sensorReadings[5] = Battery Voltage (mV, from ADC or INA226)
+ *   tp.sensorReadings[5] = Battery Voltage (mV, ADC)
  */
 
 #pragma once
@@ -24,7 +24,7 @@
  *   3. Waits sampling delay (from reg 0x00A4 or 250ms default)
  *   4. Reads 10 holding registers starting at 0x0053 (5 IEEE 754 floats)
  *   5. Decodes Temp, DO, Sat, P3, P4 into tp.sensorReadings[0..4]
- *   6. Samples battery (ADC or INA226) into tp.battery and tp.sensorReadings[5]
+ *   6. Samples battery (ADC) into tp.battery and tp.sensorReadings[5]
  *   7. Powers down RS-485 and sensor power rails
  *
  * @param tp Telemetry payload to fill with readings.
@@ -41,7 +41,3 @@ int16_t readPrimarySensorRealtime();
  * @brief Powers off and closes serial bus for real-time sensor sampling.
  */
 void stopPrimarySensorRealtime();
-
-#ifdef SENSOR_INA226
-void ina226PowerDown();
-#endif

@@ -152,8 +152,8 @@ public:
 #if defined(SENSOR_BATTERY_ADC)
     return analogReadMilliVolts(BATTERY_ADC_PIN) * BATTERY_ADC_MULTIPLIER;
 #else
-    // Battery is ADC-only on this platform. Boards without the ADC divider (e.g. the
-    // Natek-SD INA226 variant, no longer supported) report 0 rather than a bogus value.
+    // Battery is ADC-only on this platform. Boards without the ADC divider report 0
+    // rather than a bogus value.
     return 0;
 #endif
   }

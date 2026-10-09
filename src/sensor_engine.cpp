@@ -1,15 +1,5 @@
 /**
  * @file sensor_engine.cpp
- * @brief Dedicated sensor engine for Aqualabo DIGISENS Optical Dissolved Oxygen (OD) logger.
- *
- * Implements:
- *   - Aqualabo DIGISENS Modbus RTU driver (RS-485 at 9600 baud 8N1)
- *   - Battery voltage monitoring (ADC on Natek-GPRS, INA226 on Natek-SD)
- *   - Real-time DO sampling for BLE live monitor
- */
-
-/**
- * @file sensor_engine.cpp
  * @brief Sensor measurement layer for the OD-Logger.
  *
  * All hardware access goes through the injected device bus (`sensor_bus.h`), so this file is
@@ -109,7 +99,3 @@ int16_t readPrimarySensorRealtime() {
 void stopPrimarySensorRealtime() {
   odSensor().powerOff();
 }
-
-#ifdef SENSOR_INA226
-void ina226PowerDown() {}
-#endif

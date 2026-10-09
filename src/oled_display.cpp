@@ -290,7 +290,7 @@ void oledUpdateMonitor(const TelemetryPayload& tp, const RtcDateTime& dt, uint32
   oledDisplay.printf("Temp: %.2f C", tempValue);
 
   oledDisplay.setCursor(0, 53);
-#if defined(SENSOR_BATTERY_ADC) || defined(SENSOR_INA226)
+#if defined(SENSOR_BATTERY_ADC)
   oledDisplay.printf("Bat:%.2fV P3:%.1f", tp.battery / 1000.0f, p3Value);
 #else
   oledDisplay.printf("Status: 0x%08X", (unsigned int)tp.status);

@@ -18,6 +18,7 @@
 #include "rtc_utils.h"
 #include "sensor_engine.h"
 #include "wifi_http.h"
+#include "aqua_link.h"
 #include "esp_now_sender.h"
 
 /* -------------------------- Dependencies --------------------------- */
@@ -166,7 +167,13 @@ void onSensorCommandReceived(const char* cmdId, const char* action, const char* 
   StaticJsonDocument<256> stateDoc;
 
   if (strcmp(action, "start_experiment") == 0) {
-    const char* expId = pDoc["experiment_id"] | "exp_default";
+    // Reaching this without an id means the run cannot be identified afterwards, and the
+    // samples would be grouped under a name nothing else knows. Say so, rather than letting a
+    // silent fallback look like a working experiment in the archive.
+    const char* expId = pDoc["experiment_id"] | "";
+    if (expId[0] == '\0') {
+      Logln("[CMD] start_experiment without experiment_id: samples will not be attributable.");
+    }
     const char* expName = pDoc["name"] | "Experimento";
     const char* fname = pDoc["csv_filename"] | "EXP_01.CSV";
     int intervalSec = pDoc["interval_sec"] | 5;
@@ -311,6 +318,16 @@ void onSensorCommandReceived(const char* cmdId, const char* action, const char* 
       prepareForDeepSleep(sleepMin);
     }
     return;
+  } else {
+    // An unrecognised action must not be acknowledged as applied. Without this the chain fell
+    // through with `success` still true, so the gateway recorded a green "acknowledged" for an
+    // action this firmware never performed. That is worse than an error: a mistyped action
+    // looked successful, and an ack that can mean nothing makes the whole channel untrustworthy
+    // -- including for the commands it does perform.
+    Logf("[CMD] Unsupported action: %s\n", action);
+    success = false;
+    stateDoc["error"] = "unsupported_action";
+    stateDoc["action"] = action;
   }
 
   String stateStr;
@@ -599,6 +616,12 @@ void setup() {
  */
 void loop() {
   esp_task_wdt_reset();
+
+#if defined(WIFI_MODULE) && AQUA_TRANSPORT_MQTT
+  // Serviced before anything can return, so the MQTT keepalive and the command subscription
+  // stay alive on every path through the loop — including the OTA and experiment early-outs.
+  aquaLinkLoop();
+#endif
 
 #if defined(WEB_MASTER_MODE) && defined(WIFI_MODULE)
   if (isOtaUpdating) {

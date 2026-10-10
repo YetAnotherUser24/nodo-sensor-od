@@ -11,6 +11,19 @@
 #ifdef WIFI_MODULE
 
 /**
+ * @brief Handle a command received over MQTT.
+ *
+ * Defined in `wifi_http.cpp` because it reuses the existing command dispatcher rather than
+ * reimplementing it. It reshapes the MQTT command into the legacy response envelope and calls
+ * `processTelemetryResponse`. Keeping one dispatcher means the MQTT path and the HTTPS path
+ * cannot disagree about what an action does.
+ *
+ * @param payload raw MQTT payload, NOT necessarily NUL-terminated
+ * @param length  payload length in bytes
+ */
+void wifiHttpHandleMqttCommand(const char* payload, size_t length);
+
+/**
  * @brief Connects to WiFi using credentials from config.h.
  * @param block If true, block until connected or timeout. If false, connect asynchronously.
  * @return true if connected, false on timeout or async.

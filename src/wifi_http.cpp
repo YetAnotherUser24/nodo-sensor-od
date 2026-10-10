@@ -11,6 +11,7 @@
 #ifdef WIFI_MODULE
 
 #include "wifi_http.h"
+#include "aqua_link.h"
 #include "config.h"
 #include "log.h"
 #include "n_logger_config.h"
@@ -241,6 +242,13 @@ static void processTelemetryResponse(const String& response) {
 }
 
 bool acknowledgeSensorCommand(const char* cmdId, bool success, const char* sensorStateJson) {
+#if AQUA_TRANSPORT_MQTT
+  // The MQTT ack carries only the result; `sensor_state` was a REST-ism for a response body the
+  // broker has no way to return. The gateway learns the same thing from the node's next
+  // telemetry envelope, which is strictly fresher.
+  (void)sensorStateJson;
+  return aquaLinkAck(cmdId, success);
+#else
   if (WiFi.status() != WL_CONNECTED || !cmdId || strlen(cmdId) == 0) {
     return false;
   }
@@ -280,9 +288,68 @@ bool acknowledgeSensorCommand(const char* cmdId, bool success, const char* senso
   ackHttp.end();
   ackClient.stop();
   return ok;
+#endif
 }
 
+/**
+ * Handle a command that arrived over MQTT.
+ *
+ * Reshapes the MQTT payload into the legacy response envelope and hands it to the existing
+ * dispatcher. The alternative — a second dispatcher for MQTT — would be two copies of the same
+ * action semantics, free to drift apart. Only the transport differs; the actions do not.
+ */
+#if AQUA_TRANSPORT_MQTT
+void wifiHttpHandleMqttCommand(const char* payload, size_t length) {
+  StaticJsonDocument<1024> in;
+  if (deserializeJson(in, payload, length) != DeserializationError::Ok) {
+    Logln("[AQUA] command payload was not valid JSON; ignored");
+    return;
+  }
+
+  const char* cmdId  = in["cmd_id"] | in["id"] | "";
+  const char* action = in["action"] | "";
+  if (action[0] == '\0') {
+    // A command with no action cannot be acted on or acknowledged meaningfully. Reporting it
+    // is better than dropping it silently, because a malformed command means the gateway and
+    // the node disagree about the format.
+    Logln("[AQUA] command had no action field");
+    return;
+  }
+
+  StaticJsonDocument<768> legacy;
+  legacy["has_command"] = true;
+  JsonObject pc = legacy.createNestedObject("pending_command");
+  pc["id"] = cmdId;
+  JsonObject pl = pc.createNestedObject("payload");
+  pl["action"] = action;
+  for (JsonPairConst kv : in["target"].as<JsonObjectConst>()) {
+    pl[kv.key()] = kv.value();
+  }
+
+  // Schema v2 puts the experiment at the *envelope* level (`exp`); the legacy handler reads it
+  // from inside the payload as `experiment_id`. Dropping it here is not a visible failure:
+  // the node falls back to its own "exp_default", the command is acknowledged, and every run
+  // in the archive carries the same label. That is precisely the outcome the experiment id
+  // exists to prevent, so it is mapped explicitly instead of looking like a missing feature.
+  // A null `exp` is meaningful and must stay absent -- it means "no experiment", which is
+  // what a monitor run sends, and the legacy default would invent one to group rows under.
+  if (!in["exp"].isNull()) {
+    pl["experiment_id"] = in["exp"];
+  }
+
+  String out;
+  serializeJson(legacy, out);
+  processTelemetryResponse(out);
+}
+#endif
+
 bool pollPendingCommands() {
+#if AQUA_TRANSPORT_MQTT
+  // Commands are pushed over MQTT now. Keeping an idle HTTPS poll would reintroduce on this node
+  // the exact TLS-handshake cost the migration exists to remove — for a queue that is almost
+  // always empty. The subscription in aqua_link replaces it.
+  return false;
+#else
   if (WiFi.status() != WL_CONNECTED) {
     return false;
   }
@@ -316,6 +383,7 @@ bool pollPendingCommands() {
   pollHttp.end();
   pollClient.stop();
   return false;
+#endif
 }
 
 /* ----------------------------- HTTPS POST ----------------------------- */
@@ -338,7 +406,13 @@ static uint8_t s_qHead = 0;
 static uint8_t s_qTail = 0;
 static uint8_t s_qCount = 0;
 
-uint8_t telemetryQueueCount() { return s_qCount; }
+uint8_t telemetryQueueCount() {
+#if AQUA_TRANSPORT_MQTT
+  return (uint8_t)aquaLinkQueued();
+#else
+  return s_qCount;
+#endif
+}
 
 static void queuePush(const QueuedSample& s) {
   if (s_qCount >= TELEMETRY_QUEUE_CAPACITY) {
@@ -465,6 +539,20 @@ static bool postTelemetryJson(const String& jsonOut) {
 
 /** Encola una muestra para el próximo flush bulk (no bloqueante). */
 void queueTelemetrySample(uint32_t seconds2000, int16_t* readings, int16_t rtcTempCenti, uint32_t status) {
+#if AQUA_TRANSPORT_MQTT
+  // Tag the batch with the run it belongs to. A monitor run and an experiment sample
+  // identically, so this field is the only thing that tells them apart downstream.
+  extern char activeExperimentId[40];
+  extern bool experimentActive;
+  aquaLinkSetExperiment(experimentActive ? activeExperimentId : nullptr);
+
+  // The MQTT path keeps its own batch. `msRemainder` is not legacy baggage: schema v2's
+  // `t_dev_ms` is epoch milliseconds, and the RTC resolves only whole seconds, so without
+  // it every sample inside one second shares a timestamp -- invisible at 1 Hz, and five
+  // points stacked on one instant at the 5 Hz experiment rate.
+  aquaLinkQueue(seconds2000, (uint16_t)(millis() % 1000), readings, rtcTempCenti, status);
+  return;
+#endif
   QueuedSample s;
   s.seconds2000 = seconds2000;
   s.rtcTempCenti = rtcTempCenti;
@@ -479,6 +567,11 @@ void queueTelemetrySample(uint32_t seconds2000, int16_t* readings, int16_t rtcTe
  * Devuelve true si el POST se confirmó y el buffer quedó vacío. Si falla, el buffer se preserva.
  */
 bool flushTelemetryBulk() {
+#if AQUA_TRANSPORT_MQTT
+  // Returns false when the broker is down, which is what makes the caller retain the batch:
+  // an outage costs latency, not data.
+  return aquaLinkFlush();
+#else
   if (s_qCount == 0) return true;
   if (WiFi.status() != WL_CONNECTED) return false;
 
@@ -510,10 +603,21 @@ bool flushTelemetryBulk() {
   }
   Logf("Bulk flush failed; %u samples kept in RAM.\n", (unsigned)s_qCount);
   return false;
+#endif
 }
 
 /** Publica una muestra individual de inmediato (replay de SD y muestras manuales). */
 bool publishToAquaControl(uint32_t seconds2000, int16_t* readings, int16_t rtcTempCenti, uint32_t status) {
+#if AQUA_TRANSPORT_MQTT
+  // Replayed samples must reach the same place live ones do. If a batch is already in flight we
+  // simply join it: ordering within the batch is preserved by insertion, and the envelope's
+  // device timestamp is what the archive sorts on anyway.
+  extern char activeExperimentId[40];
+  extern bool experimentActive;
+  aquaLinkSetExperiment(experimentActive ? activeExperimentId : nullptr);
+  aquaLinkQueue(seconds2000, (uint16_t)(millis() % 1000), readings, rtcTempCenti, status);
+  return aquaLinkFlush();
+#else
   if (WiFi.status() != WL_CONNECTED) {
     Logln("publishToAquaControl: WiFi not connected.");
     return false;
@@ -533,6 +637,7 @@ bool publishToAquaControl(uint32_t seconds2000, int16_t* readings, int16_t rtcTe
   String jsonOut;
   serializeJson(doc, jsonOut);
   return postTelemetryJson(jsonOut);
+#endif
 }
 
 #endif // WIFI_MODULE

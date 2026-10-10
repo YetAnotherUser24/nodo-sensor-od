@@ -185,7 +185,7 @@ void takeMeasurement() {
   espNowPkt.sequence = ++espNowSeqCounter;
   // ADR-3: el Reloj Maestro publica epoch Unix UTC en ms (misma base que los nodos NTP),
   // para que el ODrive y los actuadores alineen sus series sin desfase horario.
-  espNowPkt.rtc_timestamp_ms =
+  espNowPkt.t_dev_ms =
       ((uint64_t)secondsSince2000 + UNIX_OFFSET_2000 + LOCAL_TZ_OFFSET_SEC) * 1000ULL
       + (uint64_t)(millis() % 1000);
   espNowPkt.water_temperature = telemetryPayload.sensorReadings[0] / 100.0f;  // centi-C to C

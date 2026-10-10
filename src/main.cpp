@@ -167,22 +167,39 @@ void onSensorCommandReceived(const char* cmdId, const char* action, const char* 
   StaticJsonDocument<256> stateDoc;
 
   if (strcmp(action, "start_experiment") == 0) {
-    // Reaching this without an id means the run cannot be identified afterwards, and the
-    // samples would be grouped under a name nothing else knows. Say so, rather than letting a
-    // silent fallback look like a working experiment in the archive.
+    // Refuse an experiment with no id instead of starting an unattributable one. Its samples
+    // would go out with `exp: null` and land in the archive's "no experiment" group alongside
+    // monitor data -- the same grouping confusion the old `exp_default` sentinel caused, just
+    // quieter. The gateway now refuses this command before queueing it; this check exists
+    // because an HTTP or BLE client reaches the node without passing through the gateway.
+    // `experiment_id` is a documented required parameter of this action.
     const char* expId = pDoc["experiment_id"] | "";
     if (expId[0] == '\0') {
-      Logln("[CMD] start_experiment without experiment_id: samples will not be attributable.");
+      Logln("[CMD] start_experiment refused: no experiment_id, so the run would not be attributable.");
+      stateDoc["error"] = "missing_experiment_id";
+      stateDoc["action"] = action;
+      String refusedStr;
+      serializeJson(stateDoc, refusedStr);
+      acknowledgeSensorCommand(cmdId, false, refusedStr.c_str());
+      return;
     }
+
     const char* expName = pDoc["name"] | "Experimento";
     const char* fname = pDoc["csv_filename"] | "EXP_01.CSV";
     int intervalSec = pDoc["interval_sec"] | 5;
     if (intervalSec < 1) intervalSec = 1;
     if (intervalSec > 60) intervalSec = 60;
 
+    // Terminated explicitly: `strncpy` stops at the bound without writing a null, so an id
+    // longer than the buffer would otherwise leave the tail of the previous run's id in place
+    // and produce a name that is a concatenation of two experiments. The `set_state` path
+    // already terminates for this reason.
     strncpy(activeExperimentId, expId, sizeof(activeExperimentId) - 1);
+    activeExperimentId[sizeof(activeExperimentId) - 1] = '\0';
     strncpy(activeExperimentName, expName, sizeof(activeExperimentName) - 1);
+    activeExperimentName[sizeof(activeExperimentName) - 1] = '\0';
     strncpy(activeExperimentFilename, fname, sizeof(activeExperimentFilename) - 1);
+    activeExperimentFilename[sizeof(activeExperimentFilename) - 1] = '\0';
 
     experimentIntervalMs = intervalSec * 1000UL;
     experimentActive = true;

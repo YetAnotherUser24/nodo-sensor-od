@@ -27,8 +27,12 @@
 #define UNIX_OFFSET_2000 946684800ULL
 #endif
 
-/** Below this the DS3231 date is nonsense and the clock came from somewhere else. */
-static constexpr uint64_t kPlausibleEpochS = 1577836800ULL;  // 2020-01-01T00:00:00Z
+/**
+ * Below this the DS3231 date is nonsense and the clock came from somewhere else.
+ *
+ * The threshold is the shared `aqua::kPlausibleEpochS`; this node used to declare its own copy
+ * of the same value, as did the other three, and one of those copies had drifted.
+ */
 
 namespace {
 
@@ -93,7 +97,7 @@ char s_experimentId[40] = {0};
  * export could not detect, which is the whole reason `t_src` exists.
  */
 aqua::TimeSource timeSourceFor(uint64_t unixSeconds) {
-  return unixSeconds >= kPlausibleEpochS ? aqua::TimeSource::Rtc : aqua::TimeSource::Monotonic;
+  return unixSeconds >= aqua::kPlausibleEpochS ? aqua::TimeSource::Rtc : aqua::TimeSource::Monotonic;
 }
 
 void presenceTopic(char* out, size_t capacity) {
@@ -151,16 +155,18 @@ static bool commandExpired(const char* payload, size_t length) {
   if (!probe["deadline_ms"].is<long long>()) return false;
 
   const long long deadlineMs = probe["deadline_ms"].as<long long>();
-  if (deadlineMs <= 0) return false;  // no deadline to enforce
 
+  // This node's clock is the DS3231 rather than the MQTT broadcast, so the reading is taken
+  // here and only the judgement is shared. An unanchored clock answers "cannot judge" instead of
+  // rejecting every command it receives, which is the direction that keeps the node obeying.
   struct timeval tv;
   gettimeofday(&tv, nullptr);
-  const long long nowMs = (long long)tv.tv_sec * 1000LL + (long long)(tv.tv_usec / 1000);
-  if (nowMs < (long long)kPlausibleEpochS * 1000LL) return false;
-  if (nowMs <= deadlineMs) return false;
+  const uint64_t nowMs = (uint64_t)tv.tv_sec * 1000ULL + (uint64_t)(tv.tv_usec / 1000);
+  if (!aqua::deadlinePassed(deadlineMs, nowMs)) return false;
+  const long long ageMs = (long long)nowMs - deadlineMs;
 
   const char* cmdId = probe["cmd_id"].is<const char*>() ? probe["cmd_id"].as<const char*>() : "";
-  Logf("[AQUA] command %s expired %lld ms ago; rejected\n", cmdId, nowMs - deadlineMs);
+  Logf("[AQUA] command %s expired %lld ms ago; rejected\n", cmdId, ageMs);
   if (cmdId[0] != '\0') aquaLinkAck(cmdId, false);
   return true;
 }
@@ -219,7 +225,7 @@ void buildFields(const Queued& entry, aqua::FieldValue* out, size_t& count) {
   out[count++] = aqua::FieldValue::num(f::kBatteryV, 0.0, 2);
 #endif
   out[count++] = aqua::FieldValue::num(f::kRtcTempC, entry.rtcTempCenti / 100.0, 2);
-  out[count++] = aqua::FieldValue::integer(f::kRtcHealth, unixS >= kPlausibleEpochS ? 1 : 0);
+  out[count++] = aqua::FieldValue::integer(f::kRtcHealth, unixS >= aqua::kPlausibleEpochS ? 1 : 0);
   // The raw bitmask is passed through untouched. Interpreting it here would duplicate knowledge
   // that belongs to `sensor_engine`, and a wrong interpretation is worse than none.
   out[count++] = aqua::FieldValue::integer(f::kDevStatus, static_cast<long>(entry.status));
@@ -274,7 +280,7 @@ bool aquaLinkBegin() {
  * four-argument overload, and the argument count is what forces it.
  */
 void publishTimeIfDue(uint32_t nowMs) {
-  if (s_lastRtcMs < kPlausibleEpochS * 1000ULL) return;
+  if (s_lastRtcMs < aqua::kPlausibleEpochS * 1000ULL) return;
   if (static_cast<int32_t>(nowMs - s_timePublishedAtMs) < 0) return;
   if ((uint32_t)(nowMs - s_timePublishedAtMs) < kTimeBroadcastIntervalMs) return;
   s_timePublishedAtMs = nowMs;

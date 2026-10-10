@@ -59,6 +59,23 @@ uint32_t s_connectedAtMs = 0;
 bool s_configured = false;
 
 /**
+ * Latest DS3231 time seen by `aquaLinkQueue`, epoch ms, and when `aqua/time` last went out.
+ *
+ * The sensor owns the deployment's persistent clock (`docs/TIME-SYNC.md`), so it is the tier-3
+ * source for the station: the Pi has no RTC, and after a power cut it learns the time from
+ * here. The transport is already handed the authoritative time on every queue, so it keeps the
+ * newest rather than reaching for the RTC itself.
+ */
+uint64_t s_lastRtcMs = 0;
+uint32_t s_timePublishedAtMs = 0;
+
+/** How often the retained time broadcast is refreshed. */
+constexpr uint32_t kTimeBroadcastIntervalMs = 30000UL;
+
+/** Stated uncertainty of the DS3231 reading, ms. It is a real clock, not a guess. */
+constexpr unsigned kTimeUncertaintyMs = 50;
+
+/**
  * Experiment the samples in flight belong to, or empty for none.
  *
  * The gateway distinguishes a monitor run from an experiment by this field alone -- the two
@@ -242,6 +259,36 @@ bool aquaLinkBegin() {
   return true;
 }
 
+/**
+ * Broadcast the DS3231 time, retained, so the station can find the clock without NTP.
+ *
+ * Tier 3 of `docs/TIME-SYNC.md`. The gateway publishes this same topic from its own clock, and
+ * the two are deliberately the same shape: the payload names the clock that produced it, so a
+ * consumer can tell the Pi's post-reboot guess from a battery-backed reading. The Pi's clock is
+ * the one that is worthless exactly when this matters.
+ *
+ * Withheld until the reading is plausible. A retained message from an unanchored clock would
+ * outlive the node and hand a wrong time to every subscriber that arrives afterwards.
+ *
+ * Published with an explicit length: `publish(topic, const uint8_t*, length, retained)` is the
+ * four-argument overload, and the argument count is what forces it.
+ */
+void publishTimeIfDue(uint32_t nowMs) {
+  if (s_lastRtcMs < kPlausibleEpochS * 1000ULL) return;
+  if (static_cast<int32_t>(nowMs - s_timePublishedAtMs) < 0) return;
+  if ((uint32_t)(nowMs - s_timePublishedAtMs) < kTimeBroadcastIntervalMs) return;
+  s_timePublishedAtMs = nowMs;
+
+  char payload[96];
+  const int written = snprintf(payload, sizeof(payload),
+                               "{\"t_dev_ms\":%llu,\"t_src\":\"rtc\",\"uncertainty_ms\":%u}",
+                               (unsigned long long)s_lastRtcMs, kTimeUncertaintyMs);
+  if (written <= 0 || (size_t)written >= sizeof(payload)) return;
+
+  s_mqtt.publish(aqua::AQUA_TIME_TOPIC, (const uint8_t*)payload, (size_t)written,
+                 /*retained=*/true);
+}
+
 void aquaLinkLoop() {
   // Lazy init: the node reaches the network through several paths (blocking connect, async
   // connect, the 30 s stack-reset in wifiMaintain, and auto-reconnect after sleep). Rather than
@@ -279,6 +326,9 @@ void aquaLinkLoop() {
 
   s_mqtt.loop();
 
+  // Tier 3 of the time chain: refresh the retained DS3231 broadcast for the station.
+  publishTimeIfDue(millis());
+
   if (!s_presencePublished) {
     // Published after the first successful loop() so the retained time broadcast is already in
     // flight — the node wants the clock before it wants to be seen.
@@ -314,6 +364,9 @@ void aquaLinkQueue(uint32_t seconds2000, uint16_t msRemainder, int16_t* readings
   for (size_t i = 0; i < MAX_SENSOR_READINGS; ++i) entry.readings[i] = readings[i];
   entry.rtcTempCenti = rtcTempCenti;
   entry.status = status;
+  // Remember the newest authoritative reading: this is the tier-3 time source for the whole
+  // station, and the transport is already handed it on every queue.
+  s_lastRtcMs = entry.unixMs;
   ++s_queued;
 }
 

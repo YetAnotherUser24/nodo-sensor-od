@@ -237,6 +237,13 @@ void buildFields(const Queued& entry, aqua::FieldValue* out, size_t& count) {
 
 bool aquaLinkBegin() {
   s_bootId = esp_random() & 0xFFFFu;
+  // The builder was constructed with a placeholder (the RNG is not up at static-init),
+  // so push the real per-boot id in now. Without this the published boot_id stays 0 and
+  // the (node_id, boot_id, seq) key cannot separate two boots: after a reboot `seq`
+  // restarts at 1 while the gateway still holds the previous boot's high-water mark, so a
+  // clean restart is logged as an `out_of_order_batch`. The pump does the equivalent
+  // inline (it rebuilds the builder here).
+  s_builder.setBootId(s_bootId);
   s_seq = 0;
   s_queued = 0;
   s_dropped = 0;
